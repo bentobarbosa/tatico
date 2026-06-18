@@ -24,6 +24,11 @@
     </div>
 
     <canvas id="miniMap" width="180" height="180" aria-label="Radar do mapa"></canvas>
+    <div id="onlinePanel" class="online-panel" hidden>
+      <strong id="onlineTitle">Online 4x4</strong>
+      <span id="onlineTeam">Conectando</span>
+      <div id="onlineSlots"></div>
+    </div>
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
     <button id="buyButton" type="button">Comprar (B)</button>
     <div id="message"></div>
@@ -31,14 +36,43 @@
 
   <section id="startScreen" class="screen">
     <div class="screen-inner">
-      <p class="eyebrow">Projeto colaborativo</p>
-      <h1>Tatico 3D</h1>
-      <p class="lead">Shooter tatico em 3D feito em JavaScript. Entre no mapa, compre armas, use cobertura e elimine o time TR.</p>
-      <div class="controls">
-        <p><b>WASD</b> mover · <b>Mouse</b> mirar · <b>Clique</b> atirar</p>
-        <p><b>R</b> recarregar · <b>B</b> comprar · <b>Shift</b> andar devagar</p>
+      <div class="hero-grid">
+        <div class="start-copy">
+          <p class="eyebrow">Projeto colaborativo</p>
+          <h1>Tatico 3D</h1>
+          <p class="lead">Entre em uma arena tática, treine contra bots ou monte uma sala online 4x4 com dois times.</p>
+          <div id="manualPanel" class="controls">
+            <p><b>WASD</b> mover · <b>Mouse</b> mirar · <b>Clique</b> atirar</p>
+            <p><b>R</b> recarregar · <b>B</b> comprar · <b>Shift</b> andar devagar</p>
+            <p><b>Dica</b> use cobertura, olhe o radar e troque de posição depois de atirar.</p>
+          </div>
+        </div>
+
+        <div class="start-console">
+          <label class="name-field">
+            <span>Nome no jogo</span>
+            <input id="playerName" maxlength="16" autocomplete="off" placeholder="Jogador">
+          </label>
+
+          <div class="mode-choice" aria-label="Escolher manual">
+            <button id="manualOn" type="button">Com manual</button>
+            <button id="manualOff" type="button">Sem manual</button>
+          </div>
+
+          <div class="start-actions">
+            <button id="startButton" class="primary" type="button">
+              <span>Treino offline</span>
+              <small>Bots, loja e rodadas</small>
+            </button>
+            <button id="onlineButton" class="online-start" type="button">
+              <span>Multiplayer 4x4</span>
+              <small>CT contra TR em tempo real</small>
+            </button>
+          </div>
+
+          <p id="onlineHint">Para o 4x4 funcionar, abra o jogo pelo Render ou com <b>npm start</b>.</p>
+        </div>
       </div>
-      <button id="startButton" class="primary" type="button">Começar</button>
     </div>
   </section>
 

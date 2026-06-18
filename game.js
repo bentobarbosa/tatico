@@ -15,6 +15,7 @@
   const PLAYER_RADIUS = 0.55;
   const BOT_RADIUS = 0.62;
   const Y_UP = new THREE.Vector3(0, 1, 0);
+  const ONLINE_SEND_MS = 55;
 
   const WEAPONS = {
     pistol: { name: "Pistola", price: 0, damage: 28, mag: 12, fireMs: 260, reloadMs: 1200, spread: 0.015, pellets: 1, range: 70 },
@@ -62,6 +63,7 @@
   const mouse = { down: false };
   const walls = [];
   const bots = [];
+  const remotePlayers = new Map();
   const tracers = [];
   const particles = [];
   let phase = "menu";
@@ -86,6 +88,21 @@
     reloading: false,
     alive: true
   };
+
+  const net = {
+    mode: "offline",
+    ws: null,
+    id: null,
+    team: null,
+    players: [],
+    scores: { CT: 0, TR: 0 },
+    slots: { CT: 0, TR: 0 },
+    lastSend: 0,
+    spawnId: -1,
+    joined: false
+  };
+
+  let manualEnabled = localStorage.getItem("taticoManual") !== "off";
 
   function weapon() {
     return WEAPONS[player.weaponId];
@@ -448,15 +465,241 @@
     updateViewModel();
   }
 
+  function getPlayerName() {
+    const input = el("playerName");
+    const saved = localStorage.getItem("taticoName") || "";
+    const name = (input?.value || saved || "Jogador").trim().slice(0, 16);
+    return name || "Jogador";
+  }
+
+  function setManual(enabled) {
+    manualEnabled = enabled;
+    localStorage.setItem("taticoManual", enabled ? "on" : "off");
+    updateManualUi();
+  }
+
+  function updateManualUi() {
+    el("manualOn").classList.toggle("active", manualEnabled);
+    el("manualOff").classList.toggle("active", !manualEnabled);
+    el("manualPanel").hidden = !manualEnabled;
+  }
+
+  function clearRemotePlayers() {
+    for (const remote of remotePlayers.values()) {
+      scene.remove(remote.mesh);
+    }
+    remotePlayers.clear();
+  }
+
+  function disconnectOnline() {
+    if (net.ws) {
+      net.ws.onclose = null;
+      net.ws.close();
+    }
+    net.ws = null;
+    net.id = null;
+    net.team = null;
+    net.joined = false;
+    net.players = [];
+    net.slots = { CT: 0, TR: 0 };
+    net.spawnId = -1;
+    el("onlinePanel").hidden = true;
+    clearRemotePlayers();
+  }
+
   function startGame() {
+    net.mode = "offline";
+    disconnectOnline();
     round = 1;
     ctScore = 0;
     trScore = 0;
     player.money = 800;
     player.owned = new Set(["pistol"]);
     player.weaponId = "pistol";
+    localStorage.setItem("taticoName", getPlayerName());
     el("startScreen").classList.add("hidden");
+    el("buyButton").hidden = false;
     startBuyPhase();
+  }
+
+  function onlineSocketUrl() {
+    if (location.protocol === "https:") return "wss://" + location.host + "/multiplayer";
+    if (location.protocol === "http:") return "ws://" + location.host + "/multiplayer";
+    return null;
+  }
+
+  function startOnlineGame() {
+    const url = onlineSocketUrl();
+    if (!url) {
+      setMessage("Abra pelo servidor", "Use o Render ou rode npm start.", 3600);
+      return;
+    }
+
+    net.mode = "online";
+    disconnectOnline();
+    net.mode = "online";
+    phase = "connecting";
+    player.money = 0;
+    player.owned = new Set(WEAPON_ORDER);
+    equip("rifle");
+    localStorage.setItem("taticoName", getPlayerName());
+    el("startScreen").classList.add("hidden");
+    el("buyButton").hidden = true;
+    showBuy(false);
+    connectOnline(url);
+  }
+
+  function connectOnline(url) {
+    setMessage("Conectando 4x4", "Entrando na sala online...", 3000);
+    const ws = new WebSocket(url);
+    net.ws = ws;
+
+    ws.addEventListener("open", () => {
+      sendOnline({ type: "join", name: getPlayerName() });
+    });
+
+    ws.addEventListener("message", event => {
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      handleOnlineMessage(data);
+    });
+
+    ws.addEventListener("close", () => {
+      if (net.mode !== "online") return;
+      setMessage("Servidor desconectou", "Volte ao lobby e tente de novo.", 3600);
+      phase = "menu";
+      el("startScreen").classList.remove("hidden");
+      el("buyButton").hidden = false;
+      disconnectOnline();
+    });
+
+    ws.addEventListener("error", () => {
+      setMessage("Servidor online nao respondeu", "Use o link do Render ou rode npm start.", 4200);
+    });
+  }
+
+  function sendOnline(data) {
+    if (!net.ws || net.ws.readyState !== WebSocket.OPEN) return;
+    net.ws.send(JSON.stringify(data));
+  }
+
+  function handleOnlineMessage(data) {
+    if (data.type === "joined") {
+      net.id = data.id;
+      net.team = data.team;
+      net.joined = true;
+      phase = "live";
+      player.alive = true;
+      player.hp = 100;
+      player.position.set(data.spawn.x, PLAYER_HEIGHT, data.spawn.z);
+      player.yaw = data.spawn.yaw || 0;
+      player.pitch = 0;
+      ctScore = data.scores?.CT || 0;
+      trScore = data.scores?.TR || 0;
+      setMessage("Voce entrou no " + data.team, "Clique no jogo para travar a mira.", 2300);
+      el("onlinePanel").hidden = false;
+      updateOnlinePanel();
+      return;
+    }
+
+    if (data.type === "state") {
+      net.players = data.players || [];
+      net.scores = data.scores || net.scores;
+      net.slots = data.slots || net.slots;
+      round = data.round || round;
+      ctScore = net.scores.CT || 0;
+      trScore = net.scores.TR || 0;
+
+      const self = net.players.find(p => p.id === net.id);
+      if (self) {
+        player.hp = self.hp;
+        player.alive = self.alive;
+        if (!self.alive) mouse.down = false;
+        if (self.spawnId !== net.spawnId) {
+          net.spawnId = self.spawnId;
+          player.position.set(self.x, PLAYER_HEIGHT, self.z);
+          player.yaw = self.yaw;
+          player.pitch = self.pitch || 0;
+          player.alive = self.alive;
+          player.hp = self.hp;
+        }
+      }
+
+      syncRemotePlayers();
+      updateOnlinePanel();
+      return;
+    }
+
+    if (data.type === "shot") {
+      if (data.shooterId !== net.id) {
+        const color = data.team === "CT" ? 0x73b9ff : 0xf2b85b;
+        createTracer(
+          new THREE.Vector3(data.start.x, data.start.y, data.start.z),
+          new THREE.Vector3(data.end.x, data.end.y, data.end.z),
+          color
+        );
+      }
+      if (data.hitId === net.id) {
+        addImpact(player.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xd93636);
+      }
+      return;
+    }
+
+    if (data.type === "round") {
+      setMessage(data.title || "Rodada", data.sub || "", 2600);
+      return;
+    }
+
+    if (data.type === "error") {
+      setMessage("Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
+      phase = "menu";
+      el("startScreen").classList.remove("hidden");
+      disconnectOnline();
+    }
+  }
+
+  function syncRemotePlayers() {
+    const seen = new Set();
+    for (const info of net.players) {
+      if (info.id === net.id) continue;
+      seen.add(info.id);
+      let remote = remotePlayers.get(info.id);
+      if (!remote) {
+        const mesh = createBotMesh(info.team === "CT" ? mats.ct : mats.tr);
+        scene.add(mesh);
+        remote = { mesh };
+        remotePlayers.set(info.id, remote);
+      }
+      remote.mesh.position.set(info.x, 0, info.z);
+      remote.mesh.rotation.y = info.yaw || 0;
+      remote.mesh.visible = info.alive;
+    }
+
+    for (const [id, remote] of remotePlayers) {
+      if (!seen.has(id)) {
+        scene.remove(remote.mesh);
+        remotePlayers.delete(id);
+      }
+    }
+  }
+
+  function updateOnlinePanel() {
+    if (net.mode !== "online") {
+      el("onlinePanel").hidden = true;
+      return;
+    }
+    el("onlinePanel").hidden = false;
+    el("onlineTitle").textContent = "Online 4x4";
+    el("onlineTeam").textContent = (net.team ? "Seu time: " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
+
+    const dots = [];
+    for (let i = 0; i < 4; i++) dots.push("<span class=\"slot-dot " + (i < (net.slots.CT || 0) ? "ct" : "") + "\"></span>");
+    for (let i = 0; i < 4; i++) dots.push("<span class=\"slot-dot " + (i < (net.slots.TR || 0) ? "tr" : "") + "\"></span>");
+    el("onlineSlots").innerHTML = dots.join("");
   }
 
   function startBuyPhase() {
@@ -490,6 +733,10 @@
   }
 
   function showBuy(open) {
+    if (net.mode === "online" && open) {
+      setMessage("Online 4x4", "Equipamento fixo para deixar a partida justa.", 1500);
+      return;
+    }
     if (open && document.pointerLockElement === renderer.domElement) {
       document.exitPointerLock?.();
     }
@@ -634,6 +881,10 @@
 
   function shoot() {
     if (phase !== "live" || !player.alive) return;
+    if (net.mode === "online") {
+      shootOnline();
+      return;
+    }
     const w = weapon();
     const now = performance.now();
     if (player.reloading || now < player.fireCooldown) return;
@@ -666,6 +917,35 @@
       if (hitBot) damageBot(hitBot, w.damage);
       createTracer(origin, origin.clone().addScaledVector(dir, hitDist), hitBot ? 0x9cff6d : 0xffdf72);
     }
+    if (player.ammo <= 0) reload();
+    updateHud();
+  }
+
+  function shootOnline() {
+    const w = weapon();
+    const now = performance.now();
+    if (!net.joined || player.reloading || now < player.fireCooldown) return;
+    if (player.ammo <= 0) {
+      reload();
+      return;
+    }
+
+    player.fireCooldown = now + w.fireMs;
+    player.ammo--;
+
+    const origin = player.position.clone();
+    origin.y = PLAYER_HEIGHT - 0.05;
+    const dir = cameraDir();
+    const endDist = firstWallDistance(origin, dir, w.range);
+    createTracer(origin, origin.clone().addScaledVector(dir, endDist), net.team === "CT" ? 0x73b9ff : 0xf2b85b);
+
+    sendOnline({
+      type: "fire",
+      weaponId: player.weaponId,
+      yaw: player.yaw,
+      pitch: player.pitch
+    });
+
     if (player.ammo <= 0) reload();
     updateHud();
   }
@@ -735,6 +1015,22 @@
       player.ammo = weapon().mag;
       updateHud();
     }
+  }
+
+  function updateOnlineNetwork() {
+    if (net.mode !== "online" || phase !== "live" || !net.joined) return;
+    const now = performance.now();
+    if (now - net.lastSend < ONLINE_SEND_MS) return;
+    net.lastSend = now;
+    sendOnline({
+      type: "state",
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z,
+      yaw: player.yaw,
+      pitch: player.pitch,
+      weaponId: player.weaponId
+    });
   }
 
   function updateBots(dt) {
@@ -865,10 +1161,10 @@
     el("hp").textContent = Math.ceil(player.hp);
     el("weapon").textContent = weapon().name;
     el("ammo").textContent = player.reloading ? "recarregando" : player.ammo + "/" + weapon().mag;
-    el("money").textContent = "$" + player.money;
+    el("money").textContent = net.mode === "online" ? (net.team || "Online") : "$" + player.money;
     el("ctScore").textContent = "CT " + ctScore;
     el("trScore").textContent = trScore + " TR";
-    el("roundLabel").textContent = "R" + round;
+    el("roundLabel").textContent = net.mode === "online" ? "4x4" : "R" + round;
   }
 
   function drawMiniMap() {
@@ -895,18 +1191,28 @@
     }
     ctx.fillStyle = "rgba(255, 207, 76, 0.55)";
     ctx.fillRect((42 - 9) * scale, (42 - 7) * scale, 18 * scale, 14 * scale);
-    for (const bot of bots) {
-      if (!bot.alive) continue;
-      ctx.fillStyle = "#f2b85b";
-      ctx.beginPath();
-      ctx.arc(bot.position.x * scale, bot.position.z * scale, 3, 0, Math.PI * 2);
-      ctx.fill();
+    if (net.mode === "online") {
+      for (const other of net.players) {
+        if (!other.alive || other.id === net.id) continue;
+        ctx.fillStyle = other.team === "CT" ? "#73b9ff" : "#f2b85b";
+        ctx.beginPath();
+        ctx.arc(other.x * scale, other.z * scale, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      for (const bot of bots) {
+        if (!bot.alive) continue;
+        ctx.fillStyle = "#f2b85b";
+        ctx.beginPath();
+        ctx.arc(bot.position.x * scale, bot.position.z * scale, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
-    ctx.fillStyle = "#73b9ff";
+    ctx.fillStyle = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
     ctx.beginPath();
     ctx.arc(player.position.x * scale, player.position.z * scale, 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#73b9ff";
+    ctx.strokeStyle = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
     ctx.beginPath();
     ctx.moveTo(player.position.x * scale, player.position.z * scale);
     ctx.lineTo((player.position.x - Math.sin(player.yaw) * 6) * scale, (player.position.z - Math.cos(player.yaw) * 6) * scale);
@@ -918,8 +1224,12 @@
     const dt = Math.min(clock.getDelta(), 0.05);
     if (phase === "live" || phase === "round_end") {
       updatePlayer(dt);
-      updateBots(dt);
-      updateRound(dt);
+      if (net.mode === "online") {
+        updateOnlineNetwork();
+      } else {
+        updateBots(dt);
+        updateRound(dt);
+      }
     }
     if (phase === "live" && mouse.down) shoot();
     updateTracers(dt);
@@ -943,7 +1253,7 @@
     window.addEventListener("keydown", event => {
       keys[event.code] = true;
       if (event.code === "KeyR") reload();
-      if (event.code === "KeyB" && phase === "buy") showBuy(true);
+      if (event.code === "KeyB" && phase === "buy" && net.mode !== "online") showBuy(true);
       if (event.code === "Escape") {
         if (phase === "buy") showBuy(true);
       }
@@ -975,6 +1285,9 @@
       if (phase === "live") lockPointer();
     });
     el("startButton").addEventListener("click", startGame);
+    el("onlineButton").addEventListener("click", startOnlineGame);
+    el("manualOn").addEventListener("click", () => setManual(true));
+    el("manualOff").addEventListener("click", () => setManual(false));
     el("playRound").addEventListener("click", startRound);
     el("closeBuy").addEventListener("click", () => showBuy(false));
     el("buyButton").addEventListener("click", () => {
@@ -990,6 +1303,8 @@
   function init() {
     buildMap();
     bindEvents();
+    el("playerName").value = localStorage.getItem("taticoName") || "";
+    updateManualUi();
     resetPlayer();
     updateHud();
     el("loading").style.display = "none";

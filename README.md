@@ -17,12 +17,14 @@ Jogar: https://bentobarbosa.github.io/tatico/
 ## O que tem agora
 
 - Engine 3D em JavaScript com Three.js `0.160.0`
+- Tela inicial nova com nome do jogador, escolha de manual de comandos e dois modos: treino offline ou multiplayer
 - Mapa 3D maior estilo arena tática, com corredores, cobertura, caixas, contêineres, barris, paredes e bombsite A
 - Movimento corrigido para andar exatamente na direção da câmera
 - Gráficos com tone mapping, sombras melhores, luz de preenchimento e mais detalhes no mapa
 - Personagens TR com corpo 3D: tronco em `CapsuleGeometry`, cabeça, capacete, visor, colete, braços, mãos, pernas, botas e arma
 - Modelo em primeira pessoa com braços e arma visível
 - Sistema de rodadas CT vs TR
+- Multiplayer online 4x4 com WebSocket, times CT/TR, limite de 8 jogadores, placar, vida, tiros, dano e reset de rodada
 - Bots com IA simples: procuram o jogador, usam linha de visão, avançam, recuam e atiram
 - Armas compráveis: pistola, SMG, escopeta, fuzil e sniper
 - HUD com vida, arma, munição, dinheiro, placar e radar
@@ -36,6 +38,8 @@ Jogar: https://bentobarbosa.github.io/tatico/
 
 ## Rodar localmente
 
+Para testar o modo offline, qualquer servidor local funciona:
+
 ```bash
 cd /Users/guilhermetrecenti/Documents/Codex/2026-06-15/voce-tem-acesso-ao-meu-repositorio/work/tatico
 python3 -m http.server 8080
@@ -47,12 +51,20 @@ Depois abra:
 http://localhost:8080
 ```
 
-Tambem pode rodar do mesmo jeito que vai rodar no servidor:
+Para testar o multiplayer 4x4, rode com Node:
 
 ```bash
 cd /Users/guilhermetrecenti/Documents/Codex/2026-06-15/voce-tem-acesso-ao-meu-repositorio/work/tatico
 npm start
 ```
+
+Depois abra:
+
+```text
+http://localhost:8080
+```
+
+O botao **Multiplayer 4x4** precisa do servidor Node ou do Render, porque ele usa WebSocket.
 
 ## Colocar no servidor gratuito
 
@@ -91,7 +103,6 @@ git push
 ## Ideias para a próxima fase
 
 - Bomba com plantar/desarmar
-- Multiplayer online 4v4 com servidor autoritativo em Node.js/WebSocket
 - Sons de tiro, passos e recarga
 - Mais mapas
 - Granadas flash/smoke
@@ -100,7 +111,6 @@ git push
 
 ## Multiplayer 4v4
 
-Dá para fazer, mas precisa de uma parte além do GitHub Pages: um servidor em tempo real.
-O caminho recomendado é manter o site no GitHub Pages e criar um servidor Node.js com WebSocket/Socket.IO para salas 4v4, times CT/TR, posições, tiros, dano, round e placar.
+O multiplayer ja esta implementado no servidor Node do projeto. Ele usa WebSocket em `/multiplayer`, divide automaticamente os jogadores em CT e TR e limita a sala em 4 jogadores por time.
 
-Para funcionar bem, o servidor deve ser autoritativo: ele decide acertos, vida, dinheiro e fim de rodada. Assim fica mais justo e evita trapaça simples.
+O servidor decide tiros, dano, vida, mortes, placar e reset de rodada. A movimentacao fica rapida no cliente e e sincronizada para os outros jogadores.
