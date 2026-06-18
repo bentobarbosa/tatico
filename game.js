@@ -9,8 +9,8 @@
   const el = id => document.getElementById(id);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const rand = (min, max) => min + Math.random() * (max - min);
-  const WORLD_W = 120;
-  const WORLD_D = 92;
+  const WORLD_W = 156;
+  const WORLD_D = 122;
   const PLAYER_HEIGHT = 1.72;
   const PLAYER_RADIUS = 0.55;
   const BOT_RADIUS = 0.62;
@@ -27,7 +27,7 @@
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1d2118);
-  scene.fog = new THREE.Fog(0x1d2118, 55, 132);
+  scene.fog = new THREE.Fog(0x1d2118, 70, 170);
 
   const camera = new THREE.PerspectiveCamera(73, window.innerWidth / window.innerHeight, 0.05, 220);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -35,6 +35,8 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.55));
   if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
   else renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.appendChild(renderer.domElement);
@@ -43,14 +45,17 @@
   const hemi = new THREE.HemisphereLight(0xdde8ff, 0x394326, 1.7);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff0ce, 2.05);
-  sun.position.set(-24, 42, 18);
+  sun.position.set(-34, 52, 26);
   sun.castShadow = true;
-  sun.shadow.camera.left = -80;
-  sun.shadow.camera.right = 80;
-  sun.shadow.camera.top = 80;
-  sun.shadow.camera.bottom = -80;
+  sun.shadow.camera.left = -100;
+  sun.shadow.camera.right = 100;
+  sun.shadow.camera.top = 100;
+  sun.shadow.camera.bottom = -100;
   sun.shadow.mapSize.set(2048, 2048);
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x9fc4ff, 0.42);
+  fill.position.set(40, 18, -32);
+  scene.add(fill);
 
   const clock = new THREE.Clock();
   const keys = {};
@@ -67,7 +72,7 @@
   let roundEndTimer = 0;
 
   const player = {
-    position: new THREE.Vector3(0, PLAYER_HEIGHT, 36),
+    position: new THREE.Vector3(0, PLAYER_HEIGHT, 50),
     yaw: 0,
     pitch: 0,
     hp: 100,
@@ -106,6 +111,10 @@
     ct: makeMat(0x3f83c4),
     tr: makeMat(0xc49a42),
     black: makeMat(0x141414, 0.7),
+    asphalt: makeMat(0x2f332d, 0.88),
+    containerBlue: makeMat(0x315e7e, 0.68),
+    containerRed: makeMat(0x85483c, 0.68),
+    barrel: makeMat(0x365b4a, 0.58),
     glass: new THREE.MeshStandardMaterial({ color: 0x8dc3d6, roughness: 0.22, metalness: 0.05, transparent: true, opacity: 0.42 })
   };
 
@@ -180,13 +189,66 @@
     return mesh;
   }
 
+  function addContainer(x, z, rot = 0, colorMat = mats.containerBlue) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(10, 3.3, 3.2), colorMat);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+    for (let i = -4; i <= 4; i += 2) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.42, 3.34), mats.metal);
+      rib.position.x = i;
+      group.add(rib);
+    }
+    group.position.set(x, 1.65, z);
+    group.rotation.y = rot;
+    scene.add(group);
+    const horizontal = Math.abs(Math.cos(rot)) > 0.7;
+    walls.push({
+      x,
+      z,
+      halfX: horizontal ? 5 : 1.6,
+      halfZ: horizontal ? 1.6 : 5,
+      h: 3.3,
+      mesh: group,
+      label: "container"
+    });
+    return group;
+  }
+
+  function addBarrel(x, z) {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 18), mats.barrel);
+    mesh.position.set(x, 0.68, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    walls.push({ x, z, halfX: 0.62, halfZ: 0.62, h: 1.35, mesh, label: "barril" });
+    return mesh;
+  }
+
+  function addLightPost(x, z) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.4, 10), mats.black);
+    post.position.set(x, 2.2, z);
+    post.castShadow = true;
+    scene.add(post);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe6a3 }));
+    lamp.position.set(x, 4.5, z);
+    scene.add(lamp);
+  }
+
   function buildMap() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, WORLD_D), mats.floor);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(120, 24, 0x252c20, 0x252c20);
+    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W * 0.72, 18), mats.asphalt);
+    asphalt.rotation.x = -Math.PI / 2;
+    asphalt.position.y = 0.014;
+    asphalt.receiveShadow = true;
+    scene.add(asphalt);
+
+    const grid = new THREE.GridHelper(156, 30, 0x252c20, 0x252c20);
     grid.position.y = 0.012;
     scene.add(grid);
 
@@ -195,13 +257,17 @@
     addBox(-WORLD_W / 2, 0, 2.4, WORLD_D, 4.2, mats.darkWall, "muro");
     addBox(WORLD_W / 2, 0, 2.4, WORLD_D, 4.2, mats.darkWall, "muro");
 
-    addBox(-38, -14, 4, 36, 5.3, mats.wall, "predio B");
-    addBox(38, 10, 4, 42, 5.3, mats.wall, "predio A");
-    addBox(-10, -29, 38, 4, 4.2, mats.brick, "corredor baixo");
-    addBox(13, 28, 36, 4, 4.2, mats.brick, "corredor alto");
+    addBox(-50, -18, 4, 42, 5.3, mats.wall, "predio B");
+    addBox(50, 13, 4, 48, 5.3, mats.wall, "predio A");
+    addBox(-18, -39, 48, 4, 4.2, mats.brick, "corredor baixo");
+    addBox(18, 40, 48, 4, 4.2, mats.brick, "corredor alto");
     addBox(0, 0, 18, 4, 3.2, mats.wall, "meio");
     addBox(-20, 12, 4, 18, 3.6, mats.wall, "janela");
     addBox(23, -14, 4, 18, 3.6, mats.wall, "porta");
+    addBox(-55, 26, 24, 3.4, 3.4, mats.brick, "varanda B");
+    addBox(55, -30, 24, 3.4, 3.4, mats.brick, "varanda A");
+    addBox(-5, 30, 4, 20, 3.2, mats.wall, "meio alto");
+    addBox(5, -31, 4, 20, 3.2, mats.wall, "meio baixo");
 
     addCrate(-13, 5, 4, 2.7);
     addCrate(-5, 8, 4, 2.7);
@@ -211,21 +277,36 @@
     addCrate(43, -24, 4.5, 2.8);
     addCrate(0, 17, 3.4, 2.4);
     addCrate(0, -19, 3.4, 2.4);
+    addCrate(-32, -4, 3.6, 2.5);
+    addCrate(31, 9, 3.6, 2.5);
+    addCrate(-58, -41, 4.5, 2.8);
+    addCrate(58, 43, 4.5, 2.8);
+
+    addContainer(-36, 39, 0, mats.containerBlue);
+    addContainer(-27, 43, 0, mats.containerRed);
+    addContainer(34, -42, 0, mats.containerRed);
+    addContainer(46, -38, Math.PI / 2, mats.containerBlue);
+    addContainer(-61, 2, Math.PI / 2, mats.containerBlue);
+    addContainer(62, -2, Math.PI / 2, mats.containerRed);
+
+    [-24, -20, 20, 24].forEach(x => addBarrel(x, -8));
+    [-46, -43, 43, 46].forEach(x => addBarrel(x, 18));
+    addBarrel(-64, -24);
+    addBarrel(64, 26);
 
     const site = new THREE.Mesh(new THREE.BoxGeometry(18, 0.08, 14), mats.site);
-    site.position.set(30, 0.05, 30);
+    site.position.set(42, 0.05, 42);
     site.receiveShadow = true;
     scene.add(site);
 
     const siteText = makeSiteMarker();
-    siteText.position.set(30, 0.12, 30);
+    siteText.position.set(42, 0.12, 42);
     scene.add(siteText);
 
-    for (let i = 0; i < 12; i++) {
-      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.8, 10), mats.black);
-      lamp.position.set(rand(-52, 52), 1.9, rand(-39, 39));
-      scene.add(lamp);
-    }
+    [-60, -30, 0, 30, 60].forEach(x => {
+      addLightPost(x, -52);
+      addLightPost(x, 52);
+    });
   }
 
   function makeSiteMarker() {
@@ -324,7 +405,7 @@
   }
 
   function resetPlayer() {
-    player.position.set(0, PLAYER_HEIGHT, 37);
+    player.position.set(0, PLAYER_HEIGHT, 50);
     player.yaw = 0;
     player.pitch = 0;
     player.hp = 100;
@@ -342,7 +423,7 @@
     const count = clamp(3 + Math.floor(round / 2), 3, 8);
     for (let i = 0; i < count; i++) {
       const bot = {
-        position: new THREE.Vector3(-22 + i * 7, 0, -35 + (i % 2) * 5),
+        position: new THREE.Vector3(-25 + i * 7, 0, -50 + (i % 2) * 5),
         yaw: 0,
         hp: 92 + round * 4,
         alive: true,
@@ -412,6 +493,7 @@
     if (open && document.pointerLockElement === renderer.domElement) {
       document.exitPointerLock?.();
     }
+    if (open) mouse.down = false;
     renderBuy();
     el("buyMenu").hidden = !open;
   }
@@ -451,16 +533,16 @@
   }
 
   function forwardDir() {
-    return new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw) * -1).normalize();
+    return new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw)).normalize();
   }
 
   function rightDir() {
-    return new THREE.Vector3(Math.cos(player.yaw), 0, Math.sin(player.yaw)).normalize();
+    return new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
   }
 
   function cameraDir() {
     const dir = new THREE.Vector3(
-      Math.sin(player.yaw) * Math.cos(player.pitch),
+      -Math.sin(player.yaw) * Math.cos(player.pitch),
       Math.sin(player.pitch),
       -Math.cos(player.yaw) * Math.cos(player.pitch)
     );
@@ -671,7 +753,7 @@
       let moveZ = 0;
 
       if (seen) {
-        bot.yaw = Math.atan2(toPlayer.x, -toPlayer.z);
+        bot.yaw = Math.atan2(-toPlayer.x, -toPlayer.z);
         const dir = toPlayer.normalize();
         const side = new THREE.Vector3(dir.z, 0, -dir.x).multiplyScalar(bot.strafe);
         if (dist > 24) {
@@ -687,7 +769,7 @@
       } else {
         if (bot.think <= 0) {
           bot.think = rand(0.8, 1.7);
-          bot.target = new THREE.Vector3(rand(-34, 34), 0, rand(-24, 24));
+          bot.target = new THREE.Vector3(rand(-58, 58), 0, rand(-44, 44));
         }
         const target = bot.target || new THREE.Vector3(0, 0, 0);
         const d = target.clone().sub(bot.position);
@@ -695,7 +777,7 @@
           d.normalize();
           moveX += d.x;
           moveZ += d.z;
-          bot.yaw = Math.atan2(d.x, -d.z);
+          bot.yaw = Math.atan2(-d.x, -d.z);
         }
       }
 
@@ -812,7 +894,7 @@
       ctx.fillRect((wall.x - wall.halfX) * scale, (wall.z - wall.halfZ) * scale, wall.halfX * 2 * scale, wall.halfZ * 2 * scale);
     }
     ctx.fillStyle = "rgba(255, 207, 76, 0.55)";
-    ctx.fillRect((30 - 9) * scale, (30 - 7) * scale, 18 * scale, 14 * scale);
+    ctx.fillRect((42 - 9) * scale, (42 - 7) * scale, 18 * scale, 14 * scale);
     for (const bot of bots) {
       if (!bot.alive) continue;
       ctx.fillStyle = "#f2b85b";
@@ -827,7 +909,7 @@
     ctx.strokeStyle = "#73b9ff";
     ctx.beginPath();
     ctx.moveTo(player.position.x * scale, player.position.z * scale);
-    ctx.lineTo((player.position.x + Math.sin(player.yaw) * 6) * scale, (player.position.z - Math.cos(player.yaw) * 6) * scale);
+    ctx.lineTo((player.position.x - Math.sin(player.yaw) * 6) * scale, (player.position.z - Math.cos(player.yaw) * 6) * scale);
     ctx.stroke();
     ctx.restore();
   }
@@ -874,17 +956,21 @@
       player.yaw -= event.movementX * 0.0022;
       player.pitch = clamp(player.pitch - event.movementY * 0.002, -1.18, 1.08);
     });
-    window.addEventListener("mousedown", event => {
-      if (event.button !== 0) return;
+    renderer.domElement.addEventListener("pointerdown", event => {
+      if (event.button !== 0 && event.pointerType !== "touch") return;
       if (phase === "live") {
         lockPointer();
         mouse.down = true;
         shoot();
       }
     });
-    window.addEventListener("mouseup", () => {
+    window.addEventListener("pointerup", () => {
       mouse.down = false;
     });
+    window.addEventListener("blur", () => {
+      mouse.down = false;
+    });
+    renderer.domElement.addEventListener("contextmenu", event => event.preventDefault());
     renderer.domElement.addEventListener("click", () => {
       if (phase === "live") lockPointer();
     });

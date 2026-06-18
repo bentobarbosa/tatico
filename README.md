@@ -9,7 +9,7 @@ Jogar: https://bentobarbosa.github.io/tatico/
 
 - WASD: mover
 - Mouse: mirar
-- Clique esquerdo: atirar
+- Clique esquerdo do mouse ou touchpad: atirar
 - R: recarregar
 - B: comprar, durante a fase de compra
 - Shift: andar devagar
@@ -17,7 +17,9 @@ Jogar: https://bentobarbosa.github.io/tatico/
 ## O que tem agora
 
 - Engine 3D em JavaScript com Three.js `0.160.0`
-- Mapa 3D estilo arena tática, com corredores, cobertura, caixas, paredes e bombsite A
+- Mapa 3D maior estilo arena tática, com corredores, cobertura, caixas, contêineres, barris, paredes e bombsite A
+- Movimento corrigido para andar exatamente na direção da câmera
+- Gráficos com tone mapping, sombras melhores, luz de preenchimento e mais detalhes no mapa
 - Personagens TR com corpo 3D: tronco em `CapsuleGeometry`, cabeça, capacete, visor, colete, braços, mãos, pernas, botas e arma
 - Modelo em primeira pessoa com braços e arma visível
 - Sistema de rodadas CT vs TR
@@ -64,9 +66,16 @@ git push
 ## Ideias para a próxima fase
 
 - Bomba com plantar/desarmar
-- Multiplayer online
+- Multiplayer online 4v4 com servidor autoritativo em Node.js/WebSocket
 - Sons de tiro, passos e recarga
 - Mais mapas
 - Granadas flash/smoke
 - IA com cobertura
 - Skins e nicks
+
+## Multiplayer 4v4
+
+Dá para fazer, mas precisa de uma parte além do GitHub Pages: um servidor em tempo real.
+O caminho recomendado é manter o site no GitHub Pages e criar um servidor Node.js com WebSocket/Socket.IO para salas 4v4, times CT/TR, posições, tiros, dano, round e placar.
+
+Para funcionar bem, o servidor deve ser autoritativo: ele decide acertos, vida, dinheiro e fim de rodada. Assim fica mais justo e evita trapaça simples.
