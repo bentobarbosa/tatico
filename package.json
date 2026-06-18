@@ -1,0 +1,13 @@
+{
+  "name": "tatico-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tatico 3D shooter em JavaScript com Three.js.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

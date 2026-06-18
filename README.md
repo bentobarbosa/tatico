@@ -47,6 +47,31 @@ Depois abra:
 http://localhost:8080
 ```
 
+Tambem pode rodar do mesmo jeito que vai rodar no servidor:
+
+```bash
+cd /Users/guilhermetrecenti/Documents/Codex/2026-06-15/voce-tem-acesso-ao-meu-repositorio/work/tatico
+npm start
+```
+
+## Colocar no servidor gratuito
+
+O projeto ja tem `server.js`, `package.json` e `render.yaml`, entao ele esta pronto para subir no Render como servidor Node.
+
+No Render:
+
+1. Clique em **New +**
+2. Escolha **Blueprint** ou **Web Service**
+3. Conecte o repositorio `bentobarbosa/tatico`
+4. Use o plano **Free**
+5. Confirme o deploy
+
+Se escolher **Web Service** manualmente:
+
+- Build Command: `npm install`
+- Start Command: `npm start`
+- Health Check Path: `/health`
+
 ## Como colaborar
 
 Antes de mexer:
