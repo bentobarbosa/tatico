@@ -246,7 +246,7 @@ canvas {
   border-radius: 999px;
   background: rgba(234, 255, 180, 0.95);
   box-shadow: 0 0 10px rgba(200, 239, 104, 0.34);
-  transition: transform 90ms ease, background 90ms ease, opacity 90ms ease;
+  transition: background 90ms ease, opacity 90ms ease;
 }
 
 #crosshair span:nth-child(1) {
@@ -330,20 +330,8 @@ canvas {
   transition: border-color 90ms ease, transform 90ms ease;
 }
 
-#crosshair.firing span:nth-child(1) {
-  transform: translateY(-4px);
-}
-
-#crosshair.firing span:nth-child(2) {
-  transform: translateY(4px);
-}
-
-#crosshair.firing span:nth-child(3) {
-  transform: translateX(-4px);
-}
-
-#crosshair.firing span:nth-child(4) {
-  transform: translateX(4px);
+#crosshair.firing span {
+  opacity: 0.78;
 }
 
 #crosshair.hit span,

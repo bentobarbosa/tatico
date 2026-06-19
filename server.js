@@ -25,11 +25,11 @@ const DRAW_REWARD = 2200;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const WEAPONS = {
-  pistol: { price: 0, damage: 28, fireMs: 260, spread: 0.015, pellets: 1, range: 70 },
-  smg: { price: 1000, damage: 18, fireMs: 88, spread: 0.045, pellets: 1, range: 60 },
-  shotgun: { price: 1300, damage: 13, fireMs: 720, spread: 0.13, pellets: 8, range: 38 },
-  rifle: { price: 2500, damage: 34, fireMs: 120, spread: 0.025, pellets: 1, range: 85 },
-  sniper: { price: 4200, damage: 120, fireMs: 1350, spread: 0.004, pellets: 1, range: 115 }
+  pistol: { price: 0, damage: 28, fireMs: 260, spread: 0, pellets: 1, range: 70 },
+  smg: { price: 1000, damage: 18, fireMs: 88, spread: 0, pellets: 1, range: 60 },
+  shotgun: { price: 1300, damage: 13, fireMs: 720, spread: 0.12, pellets: 8, range: 38 },
+  rifle: { price: 2500, damage: 34, fireMs: 120, spread: 0, pellets: 1, range: 85 },
+  sniper: { price: 4200, damage: 120, fireMs: 1350, spread: 0, pellets: 1, range: 115 }
 };
 
 const mimeTypes = {

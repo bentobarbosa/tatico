@@ -22,11 +22,11 @@
   const ONLINE_SEND_MS = 55;
 
   const WEAPONS = {
-    pistol: { name: "Pistola", price: 0, damage: 28, mag: 12, fireMs: 260, reloadMs: 1200, spread: 0.015, pellets: 1, range: 70 },
-    smg: { name: "SMG", price: 1000, damage: 18, mag: 30, fireMs: 88, reloadMs: 1700, spread: 0.045, pellets: 1, range: 60 },
-    shotgun: { name: "Escopeta", price: 1300, damage: 13, mag: 8, fireMs: 720, reloadMs: 2400, spread: 0.13, pellets: 8, range: 38 },
-    rifle: { name: "Fuzil", price: 2500, damage: 34, mag: 30, fireMs: 120, reloadMs: 2200, spread: 0.025, pellets: 1, range: 85 },
-    sniper: { name: "Sniper", price: 4200, damage: 120, mag: 5, fireMs: 1350, reloadMs: 2800, spread: 0.004, pellets: 1, range: 115 }
+    pistol: { name: "Pistola", price: 0, damage: 28, mag: 12, fireMs: 260, reloadMs: 1200, spread: 0, pellets: 1, range: 70 },
+    smg: { name: "SMG", price: 1000, damage: 18, mag: 30, fireMs: 88, reloadMs: 1700, spread: 0, pellets: 1, range: 60 },
+    shotgun: { name: "Escopeta", price: 1300, damage: 13, mag: 8, fireMs: 720, reloadMs: 2400, spread: 0.12, pellets: 8, range: 38 },
+    rifle: { name: "Fuzil", price: 2500, damage: 34, mag: 30, fireMs: 120, reloadMs: 2200, spread: 0, pellets: 1, range: 85 },
+    sniper: { name: "Sniper", price: 4200, damage: 120, mag: 5, fireMs: 1350, reloadMs: 2800, spread: 0, pellets: 1, range: 115 }
   };
   const WEAPON_ORDER = ["pistol", "smg", "shotgun", "rifle", "sniper"];
 
@@ -1212,6 +1212,7 @@
 
   function renderBuy() {
     el("buyMoney").textContent = "$" + player.money;
+    el("closeBuy").textContent = net.mode === "online" ? "Fechar loja" : "Jogar agora";
     el("playRound").textContent = net.mode === "online" ? "Fechar loja" : "Entrar na rodada";
     el("weaponCards").innerHTML = WEAPON_ORDER.map(id => {
       const w = WEAPONS[id];
@@ -1246,6 +1247,17 @@
     equip(id);
     renderBuy();
     updateHud();
+  }
+
+  function buyMenuOpen() {
+    const menu = el("buyMenu");
+    return menu && !menu.hidden;
+  }
+
+  function canControlPlayer() {
+    if (!player.alive) return false;
+    if (phase === "live") return true;
+    return net.mode === "online" && phase === "buy" && !buyMenuOpen();
   }
 
   function aimByDelta(dx, dy, sensitivity = 1) {
@@ -1385,6 +1397,7 @@
   }
 
   function withSpread(dir, spread) {
+    if (spread <= 0) return dir.clone();
     const yaw = (Math.random() - 0.5) * spread;
     const pitch = (Math.random() - 0.5) * spread;
     const euler = new THREE.Euler(pitch, yaw, 0, "YXZ");
@@ -1515,7 +1528,7 @@
   }
 
   function tryJump() {
-    if (!player.alive || phase !== "live") return;
+    if (!canControlPlayer()) return;
     if (player.grounded) {
       player.velocityY = JUMP_SPEED;
       player.grounded = false;
@@ -1547,7 +1560,7 @@
   }
 
   function updatePlayer(dt) {
-    if (!player.alive || phase !== "live") return;
+    if (!canControlPlayer()) return;
     updateVerticalPhysics(dt);
     const f = forwardDir();
     const r = rightDir();
@@ -1579,7 +1592,7 @@
   }
 
   function updateOnlineNetwork() {
-    if (net.mode !== "online" || phase !== "live" || !net.joined) return;
+    if (net.mode !== "online" || !net.joined || (phase !== "live" && phase !== "buy")) return;
     const now = performance.now();
     if (now - net.lastSend < ONLINE_SEND_MS) return;
     net.lastSend = now;
@@ -1782,7 +1795,7 @@
   }
 
   function updateTouchControls() {
-    const shouldShow = phase === "live" && ("ontouchstart" in window || touchInput.used || matchMedia("(pointer: coarse)").matches);
+    const shouldShow = canControlPlayer() && ("ontouchstart" in window || touchInput.used || matchMedia("(pointer: coarse)").matches);
     el("touchControls").hidden = !shouldShow;
     el("touchBuy").hidden = false;
     el("touchWalk").classList.toggle("active", touchInput.slow);
@@ -1798,7 +1811,7 @@
 
   function loop() {
     const dt = Math.min(clock.getDelta(), 0.05);
-    if (phase === "live" || phase === "round_end") {
+    if (phase === "live" || phase === "round_end" || (net.mode === "online" && phase === "buy")) {
       updatePlayer(dt);
       if (net.mode === "online") {
         updateOnlineNetwork();
@@ -1849,7 +1862,7 @@
       if (event.code === "Space") player.jumpHeld = false;
     });
     window.addEventListener("mousemove", event => {
-      if (phase !== "live") return;
+      if (!canControlPlayer()) return;
       if (document.pointerLockElement === renderer.domElement) {
         aimByDelta(event.movementX, event.movementY);
       } else if (mouse.freeLook || (mouse.lookHeld && (event.buttons & 1))) {
@@ -1863,7 +1876,7 @@
       mouse.lastY = event.clientY;
     });
     renderer.domElement.addEventListener("pointerdown", event => {
-      if (phase !== "live") return;
+      if (!canControlPlayer()) return;
       if (event.pointerType === "touch") {
         touchInput.used = true;
         touchInput.lookId = event.pointerId;
@@ -1883,7 +1896,7 @@
       shoot();
     });
     renderer.domElement.addEventListener("pointermove", event => {
-      if (phase !== "live" || event.pointerType !== "touch" || event.pointerId !== touchInput.lookId) return;
+      if (!canControlPlayer() || event.pointerType !== "touch" || event.pointerId !== touchInput.lookId) return;
       const dx = event.clientX - touchInput.lastLookX;
       const dy = event.clientY - touchInput.lastLookY;
       touchInput.lastLookX = event.clientX;
@@ -1917,7 +1930,7 @@
     });
     renderer.domElement.addEventListener("contextmenu", event => event.preventDefault());
     renderer.domElement.addEventListener("click", event => {
-      if (phase === "live" && !touchInput.used) {
+      if (canControlPlayer() && !touchInput.used) {
         enableMouseLook(event.clientX, event.clientY);
         lockPointer();
       }
@@ -1932,7 +1945,10 @@
     el("manualOn").addEventListener("click", () => setManual(true));
     el("manualOff").addEventListener("click", () => setManual(false));
     el("playRound").addEventListener("click", startRound);
-    el("closeBuy").addEventListener("click", () => showBuy(false));
+    el("closeBuy").addEventListener("click", () => {
+      if (net.mode === "offline" && phase === "buy") startRound();
+      else showBuy(false);
+    });
     el("buyButton").addEventListener("click", () => {
       if (phase === "buy") showBuy(true);
       else setMessage("Compra fechada", "So da para comprar antes da rodada.", 1100);
