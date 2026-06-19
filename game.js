@@ -835,7 +835,7 @@
     const count = clamp(3 + Math.floor(round / 2), 3, 8);
     for (let i = 0; i < count; i++) {
       const bot = {
-        position: new THREE.Vector3(-25 + i * 7, 0, -50 + (i % 2) * 5),
+        position: new THREE.Vector3(-30 + i * 12, 0, -20 + (i % 3) * 10),
         yaw: 0,
         hp: 92 + round * 4,
         alive: true,
@@ -1778,7 +1778,7 @@
       botEye.y = 1.35;
       const toPlayer = player.position.clone().sub(bot.position);
       const dist = toPlayer.length();
-      const seen = player.alive && dist < 68 && hasLineOfSight(botEye, playerChest);
+      const seen = player.alive && dist < 90 && hasLineOfSight(botEye, playerChest);
       let moveX = 0;
       let moveZ = 0;
 
@@ -1799,7 +1799,7 @@
       } else {
         if (bot.think <= 0) {
           bot.think = rand(0.8, 1.7);
-          bot.target = new THREE.Vector3(rand(-58, 58), 0, rand(-44, 44));
+          bot.target = new THREE.Vector3(rand(-55, 55), 0, rand(-55, 55));
         }
         const target = bot.target || new THREE.Vector3(0, 0, 0);
         const d = target.clone().sub(bot.position);
