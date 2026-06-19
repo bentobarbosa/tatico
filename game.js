@@ -123,6 +123,8 @@
   };
 
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
+  const crosshairStyles = ["pro", "yellow", "cyan"];
+  let crosshairStyle = localStorage.getItem("taticoCrosshair") || "pro";
   const touchInput = {
     used: false,
     moveId: null,
@@ -872,6 +874,17 @@
     el("manualOn").classList.toggle("active", manualEnabled);
     el("manualOff").classList.toggle("active", !manualEnabled);
     el("manualPanel").hidden = !manualEnabled;
+  }
+
+  function setCrosshairStyle(style) {
+    crosshairStyle = crosshairStyles.includes(style) ? style : "pro";
+    localStorage.setItem("taticoCrosshair", crosshairStyle);
+    const crosshair = el("crosshair");
+    crosshair.classList.remove(...crosshairStyles.map(item => "crosshair-" + item));
+    crosshair.classList.add("crosshair-" + crosshairStyle);
+    document.querySelectorAll("[data-crosshair]").forEach(button => {
+      button.classList.toggle("active", button.dataset.crosshair === crosshairStyle);
+    });
   }
 
   function clearRemotePlayers() {
@@ -1944,6 +1957,10 @@
     });
     el("manualOn").addEventListener("click", () => setManual(true));
     el("manualOff").addEventListener("click", () => setManual(false));
+    el("crosshairOptions").addEventListener("click", event => {
+      const option = event.target.closest("[data-crosshair]");
+      if (option) setCrosshairStyle(option.dataset.crosshair);
+    });
     el("playRound").addEventListener("click", startRound);
     el("closeBuy").addEventListener("click", () => {
       if (net.mode === "offline" && phase === "buy") startRound();
@@ -2034,6 +2051,7 @@
     bindEvents();
     el("playerName").value = localStorage.getItem("taticoName") || "";
     updateManualUi();
+    setCrosshairStyle(crosshairStyle);
     resetPlayer();
     updateHud();
     el("loading").style.display = "none";

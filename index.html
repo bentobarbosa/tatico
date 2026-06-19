@@ -29,7 +29,9 @@
       <span id="onlineTeam">Conectando</span>
       <div id="onlineSlots"></div>
     </div>
-    <div id="crosshair" aria-label="Mira"><span></span><span></span><span></span><span></span><i></i></div>
+    <div id="crosshair" class="crosshair-pro" aria-label="Mira">
+      <span></span><span></span><span></span><span></span><i></i>
+    </div>
     <button id="buyButton" type="button">Comprar (B)</button>
     <div id="touchControls" hidden>
       <div id="touchMove" class="touch-stick" aria-label="Controle de movimento">
@@ -70,6 +72,15 @@
           <div class="mode-choice" aria-label="Escolher manual">
             <button id="manualOn" type="button">Com manual</button>
             <button id="manualOff" type="button">Sem manual</button>
+          </div>
+
+          <div class="crosshair-picker">
+            <span>Mira</span>
+            <div id="crosshairOptions" class="crosshair-options">
+              <button class="crosshair-option crosshair-preview-pro" type="button" data-crosshair="pro" aria-label="Mira verde com aro"></button>
+              <button class="crosshair-option crosshair-preview-yellow" type="button" data-crosshair="yellow" aria-label="Mira amarela"></button>
+              <button class="crosshair-option crosshair-preview-cyan" type="button" data-crosshair="cyan" aria-label="Mira ciano"></button>
+            </div>
           </div>
 
           <div class="start-actions">

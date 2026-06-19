@@ -234,47 +234,73 @@ canvas {
   left: 50%;
   top: 50%;
   z-index: 9;
-  width: 44px;
-  height: 44px;
+  --ch-color: #19db64;
+  --ch-glow: rgba(25, 219, 100, 0.42);
+  --ch-gap: 9px;
+  --ch-length: 19px;
+  --ch-thick: 4px;
+  width: 72px;
+  height: 72px;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  filter: drop-shadow(0 0 7px rgba(0, 0, 0, 0.65));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.78));
+}
+
+#crosshair.crosshair-yellow {
+  --ch-color: #ffe22f;
+  --ch-glow: rgba(255, 226, 47, 0.42);
+  --ch-gap: 8px;
+  --ch-length: 20px;
+}
+
+#crosshair.crosshair-cyan {
+  --ch-color: #21d5ff;
+  --ch-glow: rgba(33, 213, 255, 0.42);
+  --ch-gap: 11px;
+  --ch-length: 15px;
+  --ch-thick: 5px;
 }
 
 #crosshair span {
   position: absolute;
   border-radius: 999px;
-  background: rgba(234, 255, 180, 0.95);
-  box-shadow: 0 0 10px rgba(200, 239, 104, 0.34);
+  background: var(--ch-color);
+  box-shadow:
+    0 0 0 2px rgba(3, 5, 4, 0.96),
+    0 0 11px var(--ch-glow);
   transition: background 90ms ease, opacity 90ms ease;
 }
 
 #crosshair span:nth-child(1) {
-  left: 21px;
-  top: 0;
-  width: 2px;
-  height: 13px;
+  left: 50%;
+  top: calc(50% - var(--ch-gap) - var(--ch-length));
+  width: var(--ch-thick);
+  height: var(--ch-length);
+  transform: translateX(-50%);
 }
 
 #crosshair span:nth-child(2) {
-  left: 21px;
-  bottom: 0;
-  width: 2px;
-  height: 13px;
+  left: 50%;
+  top: calc(50% + var(--ch-gap));
+  width: var(--ch-thick);
+  height: var(--ch-length);
+  transform: translateX(-50%);
 }
 
 #crosshair span:nth-child(3) {
-  left: 0;
-  top: 21px;
-  width: 13px;
-  height: 2px;
+  left: calc(50% - var(--ch-gap) - var(--ch-length));
+  top: 50%;
+  width: var(--ch-length);
+  height: var(--ch-thick);
+  transform: translateY(-50%);
 }
 
 #crosshair span:nth-child(4) {
-  right: 0;
-  top: 21px;
-  width: 13px;
-  height: 2px;
+  left: calc(50% + var(--ch-gap));
+  top: 50%;
+  width: var(--ch-length);
+  height: var(--ch-thick);
+  transform: translateY(-50%);
 }
 
 #crosshair i {
@@ -283,41 +309,34 @@ canvas {
   top: 50%;
   width: 5px;
   height: 5px;
-  border: 1px solid rgba(20, 24, 19, 0.75);
   border-radius: 50%;
-  background: #f8ffd8;
-  box-shadow: 0 0 11px rgba(200, 239, 104, 0.58);
+  background: var(--ch-color);
+  box-shadow:
+    0 0 0 2px rgba(3, 5, 4, 0.96),
+    0 0 10px var(--ch-glow);
   transform: translate(-50%, -50%);
 }
 
 #crosshair i::before,
 #crosshair i::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 18px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(234, 255, 180, 0.76);
-  box-shadow: 0 0 9px rgba(200, 239, 104, 0.28);
-  transform-origin: center;
-}
-
-#crosshair i::before {
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-#crosshair i::after {
-  transform: translate(-50%, -50%) rotate(-45deg);
+  display: none;
 }
 
 #crosshair::before {
   content: "";
   position: absolute;
-  inset: 12px;
-  border: 1px solid rgba(234, 255, 180, 0.26);
+  inset: 9px;
+  border: 4px solid var(--ch-color);
   border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 2px rgba(3, 5, 4, 0.96),
+    0 0 0 2px rgba(3, 5, 4, 0.96),
+    0 0 14px var(--ch-glow);
+}
+
+#crosshair.crosshair-yellow::before,
+#crosshair.crosshair-cyan::before {
+  display: none;
 }
 
 #crosshair::after {
@@ -335,9 +354,7 @@ canvas {
 }
 
 #crosshair.hit span,
-#crosshair.hit i,
-#crosshair.hit i::before,
-#crosshair.hit i::after {
+#crosshair.hit i {
   background: #ff6d5d;
 }
 
@@ -621,6 +638,88 @@ button {
   color: #eaffb4;
 }
 
+.crosshair-picker {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.crosshair-picker > span {
+  color: rgba(245, 242, 232, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.crosshair-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.crosshair-option {
+  position: relative;
+  height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.11), transparent 48%),
+    rgba(9, 11, 9, 0.5);
+  cursor: pointer;
+}
+
+.crosshair-option.active {
+  border-color: var(--acid);
+  box-shadow: 0 0 0 3px rgba(215, 255, 110, 0.14);
+}
+
+.crosshair-option::before,
+.crosshair-option::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  background: var(--preview-color, #19db64);
+  box-shadow: 0 0 0 2px rgba(2, 3, 2, 0.96), 0 0 10px var(--preview-glow, rgba(25, 219, 100, 0.42));
+  transform: translate(-50%, -50%);
+}
+
+.crosshair-option::before {
+  width: 32px;
+  height: 4px;
+}
+
+.crosshair-option::after {
+  width: 4px;
+  height: 32px;
+}
+
+.crosshair-option.crosshair-preview-pro {
+  --preview-color: #19db64;
+  --preview-glow: rgba(25, 219, 100, 0.42);
+}
+
+.crosshair-option.crosshair-preview-pro {
+  background:
+    radial-gradient(circle, transparent 19px, #19db64 20px 23px, transparent 24px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.11), transparent 48%),
+    rgba(9, 11, 9, 0.5);
+}
+
+.crosshair-option.crosshair-preview-yellow {
+  --preview-color: #ffe22f;
+  --preview-glow: rgba(255, 226, 47, 0.42);
+}
+
+.crosshair-option.crosshair-preview-cyan {
+  --preview-color: #21d5ff;
+  --preview-glow: rgba(33, 213, 255, 0.42);
+}
+
 .start-actions {
   display: grid;
   gap: 10px;
@@ -735,6 +834,7 @@ button {
 .weapon-card:active,
 .online-start:active,
 .mode-choice button:active,
+.crosshair-option:active,
 .room-row button:active {
   transform: translateY(1px);
 }
