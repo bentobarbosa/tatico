@@ -84,11 +84,20 @@
   let roundEndTimer = 0;
   let buyCountdown = 0;
 
+  const ITEMS = {
+    hpkit:    { name: "Kit de Vida",   price: 400, desc: "Restaura 50 HP · tecla V" },
+    armorkit: { name: "Kit de Escudo", price: 650, desc: "100 de escudo · tecla B" },
+  };
+  const ITEM_ORDER = ["hpkit", "armorkit"];
+
   const player = {
     position: new THREE.Vector3(0, PLAYER_HEIGHT, 50),
     yaw: 0,
     pitch: 0,
     hp: 100,
+    armor: 0,
+    hpKits: 0,
+    armorKits: 0,
     money: 800,
     kills: 0,
     weaponId: "pistol",
@@ -820,6 +829,9 @@
     player.yaw = 0;
     player.pitch = 0;
     player.hp = 100;
+    player.armor = 0;
+    player.hpKits = 0;
+    player.armorKits = 0;
     player.kills = 0;
     player.alive = true;
     player.velocityY = 0;
@@ -1391,6 +1403,17 @@
         "<span class=\"stats\">Dano " + w.damage + " · pente " + w.mag + "<br>Cadencia " + Math.round(1000 / w.fireMs * 60) + " rpm</span>" +
         "</button>";
     }).join("");
+    el("itemCards").innerHTML = ITEM_ORDER.map(id => {
+      const item = ITEMS[id];
+      const count = id === "hpkit" ? player.hpKits : player.armorKits;
+      const disabled = player.money < item.price;
+      return "<button class=\"item-card " + (disabled ? "disabled" : "") + "\" data-item=\"" + id + "\">" +
+        "<strong>" + item.name + "</strong>" +
+        "<span class=\"price\">$" + item.price + "</span>" +
+        "<span class=\"stats\">" + item.desc + "</span>" +
+        (count > 0 ? "<span class=\"kit-count\">×" + count + "</span>" : "") +
+        "</button>";
+    }).join("");
   }
 
   function buyWeapon(id) {
@@ -1412,6 +1435,17 @@
       player.owned.add(id);
     }
     equip(id);
+    renderBuy();
+    updateHud();
+  }
+
+  function buyItem(id) {
+    if (phase !== "buy") return;
+    const item = ITEMS[id];
+    if (!item || player.money < item.price) return;
+    player.money -= item.price;
+    if (id === "hpkit") player.hpKits++;
+    else if (id === "armorkit") player.armorKits++;
     renderBuy();
     updateHud();
   }
@@ -1729,12 +1763,33 @@
 
   function damagePlayer(amount) {
     if (!player.alive) return;
-    player.hp -= amount;
+    if (player.armor > 0) {
+      const absorbed = Math.min(player.armor, Math.round(amount * 0.5));
+      player.armor = Math.max(0, player.armor - absorbed);
+      amount = Math.max(0, amount - absorbed);
+    }
+    player.hp = Math.max(0, player.hp - amount);
     if (player.hp <= 0) {
-      player.hp = 0;
       player.alive = false;
       endRound(false);
     }
+    updateHud();
+  }
+
+  function useHpKit() {
+    if (!player.alive || player.hpKits <= 0 || player.hp >= 100) return;
+    player.hp = Math.min(100, player.hp + 50);
+    player.hpKits--;
+    setMessage("Kit de Vida", "+" + Math.min(50, 100 - (player.hp - 50)) + " HP", 800);
+    updateHud();
+  }
+
+  function useArmorKit() {
+    if (!player.alive || player.armorKits <= 0 || player.armor >= 100) return;
+    player.armor = Math.min(100, player.armor + 100);
+    player.armorKits--;
+    setMessage("Kit de Escudo", "+100 Escudo", 800);
+    updateHud();
   }
 
   function reload() {
@@ -1959,7 +2014,14 @@
   }
 
   function updateHud() {
-    el("hp").textContent = Math.ceil(player.hp);
+    const hpVal = Math.ceil(player.hp);
+    const armorVal = Math.ceil(player.armor);
+    el("hp").textContent = hpVal;
+    el("hpBar").style.width = player.hp + "%";
+    el("armor").textContent = armorVal;
+    el("armorBar").style.width = player.armor + "%";
+    el("hpKits").textContent = player.hpKits;
+    el("armorKits").textContent = player.armorKits;
     el("weapon").textContent = weapon().name;
     el("ammo").textContent = player.reloading ? "recarregando" : player.ammo + "/" + weapon().mag;
     el("money").textContent = "$" + player.money;
@@ -2172,6 +2234,8 @@
       if (event.code === "KeyR") reload();
       if (event.code === "KeyC") toggleQuickSettings();
       if (event.code === "KeyN") setTimeMode(worldTime === "night" ? "day" : "night");
+      if (event.code === "KeyV") useHpKit();
+      if (event.code === "KeyB" && phase === "live") useArmorKit();
       if (event.code === "KeyB" && phase === "buy") showBuy(true);
       if (event.code === "Enter" && !chatOpen && canControlPlayer()) {
         openChat();
@@ -2304,6 +2368,10 @@
     el("weaponCards").addEventListener("click", event => {
       const card = event.target.closest("[data-weapon]");
       if (card) buyWeapon(card.dataset.weapon);
+    });
+    el("itemCards").addEventListener("click", event => {
+      const card = event.target.closest("[data-item]");
+      if (card) buyItem(card.dataset.item);
     });
 
     const stick = el("touchMove");

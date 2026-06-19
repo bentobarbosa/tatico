@@ -4,14 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Tatico 3D</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <div id="loading">Carregando Tatico 3D...</div>
 
   <main id="gameShell">
     <div id="hud">
-      <div class="hud-card hp"><span>Vida</span><strong id="hp">100</strong></div>
+      <div class="hud-bars">
+        <div class="bar-row">
+          <span class="bar-icon">HP</span>
+          <div class="bar-track"><div id="hpBar" class="bar hp-bar"></div></div>
+          <strong id="hp">100</strong>
+        </div>
+        <div class="bar-row">
+          <span class="bar-icon">ES</span>
+          <div class="bar-track"><div id="armorBar" class="bar armor-bar"></div></div>
+          <strong id="armor">0</strong>
+        </div>
+        <div class="kit-row">
+          <span class="kit-badge" title="Kit Vida (V)">V ×<span id="hpKits">0</span></span>
+          <span class="kit-badge" title="Kit Escudo (B)">B ×<span id="armorKits">0</span></span>
+        </div>
+      </div>
       <div class="hud-card"><span>Arma</span><strong id="weapon">Pistola</strong></div>
       <div class="hud-card"><span>Munição</span><strong id="ammo">12/12</strong></div>
       <div class="hud-card money"><span>Dinheiro</span><strong id="money">$800</strong></div>
@@ -180,6 +195,8 @@
         <strong id="buyMoney">$800</strong>
       </div>
       <div id="weaponCards" class="weapon-grid"></div>
+      <div class="buy-divider"><span>Itens</span></div>
+      <div id="itemCards" class="item-grid"></div>
       <div class="buy-actions">
         <button id="closeBuy" type="button">Voltar</button>
         <button id="playRound" class="primary" type="button">Entrar na rodada</button>
@@ -188,6 +205,6 @@
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="game.js?v=9"></script>
+  <script src="game.js?v=10"></script>
 </body>
 </html>
