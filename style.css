@@ -48,7 +48,7 @@ canvas {
   position: fixed;
   inset: 0;
   z-index: 1;
-  cursor: crosshair;
+  cursor: none;
   outline: 0;
   touch-action: none;
 }
@@ -154,17 +154,75 @@ canvas {
   text-shadow: 0 0 12px rgba(255, 189, 104, 0.35);
 }
 
+.session-banner {
+  position: fixed;
+  top: calc(58px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 7px;
+  border: 1px solid rgba(245, 242, 232, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+    rgba(13, 15, 11, 0.84);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.session-banner[hidden] {
+  display: none;
+}
+
+.session-banner strong,
+.session-banner button {
+  min-height: 36px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.session-banner strong {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(116, 199, 255, 0.22);
+  color: var(--ct);
+  background: rgba(116, 199, 255, 0.1);
+}
+
+.session-banner button {
+  padding: 0 13px;
+  border: 1px solid rgba(215, 255, 110, 0.25);
+  color: #10110d;
+  background: linear-gradient(135deg, var(--acid), #98d653);
+  cursor: pointer;
+}
+
+.session-banner button:disabled {
+  cursor: default;
+  opacity: 0.72;
+  color: rgba(245, 242, 232, 0.68);
+  background: rgba(255, 255, 255, 0.08);
+}
+
 #miniMap {
   position: fixed;
   right: 14px;
   top: calc(14px + env(safe-area-inset-top));
   z-index: 10;
-  width: 180px;
-  height: 180px;
+  width: 220px;
+  height: 172px;
   border: 1px solid rgba(245, 242, 232, 0.16);
-  border-radius: 50%;
+  border-radius: 8px;
   background:
-    radial-gradient(circle, rgba(116, 199, 255, 0.08), transparent 58%),
+    linear-gradient(180deg, rgba(116, 199, 255, 0.08), rgba(255, 255, 255, 0.025)),
     rgba(13, 15, 11, 0.76);
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34), inset 0 0 0 4px rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(10px);
@@ -174,7 +232,7 @@ canvas {
 .online-panel {
   position: fixed;
   right: 18px;
-  top: calc(208px + env(safe-area-inset-top));
+  top: calc(200px + env(safe-area-inset-top));
   z-index: 10;
   width: 174px;
   padding: 10px;
@@ -236,11 +294,10 @@ canvas {
   z-index: 9;
   --ch-color: #19db64;
   --ch-glow: rgba(25, 219, 100, 0.42);
-  --ch-gap: 9px;
-  --ch-length: 19px;
+  --ch-length: 34px;
   --ch-thick: 4px;
-  width: 72px;
-  height: 72px;
+  width: 46px;
+  height: 46px;
   transform: translate(-50%, -50%);
   pointer-events: none;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.78));
@@ -249,93 +306,48 @@ canvas {
 #crosshair.crosshair-yellow {
   --ch-color: #ffe22f;
   --ch-glow: rgba(255, 226, 47, 0.42);
-  --ch-gap: 8px;
-  --ch-length: 20px;
+  --ch-length: 36px;
 }
 
 #crosshair.crosshair-cyan {
   --ch-color: #21d5ff;
   --ch-glow: rgba(33, 213, 255, 0.42);
-  --ch-gap: 11px;
-  --ch-length: 15px;
   --ch-thick: 5px;
 }
 
 #crosshair span {
   position: absolute;
+  left: 50%;
+  top: 50%;
   border-radius: 999px;
   background: var(--ch-color);
   box-shadow:
     0 0 0 2px rgba(3, 5, 4, 0.96),
     0 0 11px var(--ch-glow);
-  transition: background 90ms ease, opacity 90ms ease;
+  width: var(--ch-length);
+  height: var(--ch-thick);
+  transform-origin: center;
+  transition: background 90ms ease, opacity 90ms ease, transform 90ms ease;
 }
 
 #crosshair span:nth-child(1) {
-  left: 50%;
-  top: calc(50% - var(--ch-gap) - var(--ch-length));
-  width: var(--ch-thick);
-  height: var(--ch-length);
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 #crosshair span:nth-child(2) {
-  left: 50%;
-  top: calc(50% + var(--ch-gap));
-  width: var(--ch-thick);
-  height: var(--ch-length);
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-#crosshair span:nth-child(3) {
-  left: calc(50% - var(--ch-gap) - var(--ch-length));
-  top: 50%;
-  width: var(--ch-length);
-  height: var(--ch-thick);
-  transform: translateY(-50%);
-}
-
+#crosshair span:nth-child(3),
 #crosshair span:nth-child(4) {
-  left: calc(50% + var(--ch-gap));
-  top: 50%;
-  width: var(--ch-length);
-  height: var(--ch-thick);
-  transform: translateY(-50%);
+  display: none;
 }
 
 #crosshair i {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ch-color);
-  box-shadow:
-    0 0 0 2px rgba(3, 5, 4, 0.96),
-    0 0 10px var(--ch-glow);
-  transform: translate(-50%, -50%);
-}
-
-#crosshair i::before,
-#crosshair i::after {
   display: none;
 }
 
 #crosshair::before {
-  content: "";
-  position: absolute;
-  inset: 9px;
-  border: 4px solid var(--ch-color);
-  border-radius: 50%;
-  box-shadow:
-    inset 0 0 0 2px rgba(3, 5, 4, 0.96),
-    0 0 0 2px rgba(3, 5, 4, 0.96),
-    0 0 14px var(--ch-glow);
-}
-
-#crosshair.crosshair-yellow::before,
-#crosshair.crosshair-cyan::before {
   display: none;
 }
 
@@ -351,10 +363,14 @@ canvas {
 
 #crosshair.firing span {
   opacity: 0.78;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0.86);
 }
 
-#crosshair.hit span,
-#crosshair.hit i {
+#crosshair.firing span:nth-child(2) {
+  transform: translate(-50%, -50%) rotate(-45deg) scale(0.86);
+}
+
+#crosshair.hit span {
   background: #ff6d5d;
 }
 
@@ -1000,6 +1016,7 @@ button {
 #closeBuy:active,
 #buyButton:active,
 #settingsButton:active,
+.session-banner button:active,
 .quick-head button:active,
 .weapon-card:active,
 .online-start:active,
@@ -1080,7 +1097,7 @@ button {
 
 @media (max-width: 760px) {
   #hud {
-    max-width: calc(100vw - 210px);
+    max-width: calc(100vw - 186px);
   }
 
   .hud-card {
@@ -1093,13 +1110,40 @@ button {
   }
 
   #miniMap {
-    width: 132px;
-    height: 132px;
+    width: 154px;
+    height: 120px;
+  }
+
+  #score {
+    top: calc(142px + env(safe-area-inset-top));
+  }
+
+  .session-banner {
+    top: calc(188px + env(safe-area-inset-top));
+    left: 50%;
+    width: min(330px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    align-items: center;
+    flex-direction: row;
+    gap: 5px;
+    padding: 5px;
+    transform: translateX(-50%);
+  }
+
+  .session-banner strong,
+  .session-banner button {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .session-banner button {
+    flex: 1;
   }
 
   .online-panel {
-    top: calc(154px + env(safe-area-inset-top));
-    width: 126px;
+    display: none;
   }
 
   .screen {

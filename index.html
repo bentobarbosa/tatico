@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Tatico 3D</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div id="loading">Carregando Tatico 3D...</div>
@@ -23,7 +23,12 @@
       <strong class="tr" id="trScore">0 TR</strong>
     </div>
 
-    <canvas id="miniMap" width="180" height="180" aria-label="Radar do mapa"></canvas>
+    <div id="sessionBanner" class="session-banner" hidden>
+      <strong id="sessionCode">Codigo ----</strong>
+      <button id="sessionStart" type="button">Enter / tocar para comecar</button>
+    </div>
+
+    <canvas id="miniMap" width="220" height="172" aria-label="Radar do mapa"></canvas>
     <div id="onlinePanel" class="online-panel" hidden>
       <strong id="onlineTitle">Online 4x4</strong>
       <span id="onlineTeam">Conectando</span>
@@ -166,6 +171,6 @@
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="game.js"></script>
+  <script src="game.js?v=6"></script>
 </body>
 </html>

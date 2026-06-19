@@ -82,6 +82,7 @@
   let trScore = 0;
   let messageUntil = 0;
   let roundEndTimer = 0;
+  let buyCountdown = 0;
 
   const player = {
     position: new THREE.Vector3(0, PLAYER_HEIGHT, 50),
@@ -961,6 +962,7 @@
     net.room = null;
     net.spawnId = -1;
     el("onlinePanel").hidden = true;
+    el("sessionBanner").hidden = true;
     clearRemotePlayers();
   }
 
@@ -1267,12 +1269,62 @@
     el("onlineSlots").innerHTML = dots.join("");
   }
 
+  function activateSessionStart() {
+    if (net.mode !== "online" || !net.joined) return;
+
+    if (phase === "buy") {
+      showBuy(false);
+      setMessage("Pronto", "Aguarde o combate comecar.", 1200);
+      lockPointer();
+      return;
+    }
+
+    if (phase === "live" || phase === "warmup") {
+      showBuy(false);
+      lockPointer();
+      if (phase === "warmup") {
+        setMessage("Sala " + (net.room?.code || "----"), "Compartilhe o codigo para alguem entrar no outro time.", 1700);
+      }
+      return;
+    }
+
+    if (phase === "round_end") {
+      setMessage("Fim do round", "A proxima rodada comeca em instantes.", 1200);
+    }
+  }
+
+  function updateSessionBanner() {
+    const banner = el("sessionBanner");
+    if (net.mode !== "online" || !net.joined) {
+      banner.hidden = true;
+      return;
+    }
+
+    banner.hidden = false;
+    const code = net.room?.code || "----";
+    const start = el("sessionStart");
+    el("sessionCode").textContent = "Codigo " + code;
+    start.hidden = false;
+
+    if (phase === "connecting") {
+      start.textContent = "Conectando...";
+      start.disabled = true;
+    } else if (phase === "live" || phase === "round_end") {
+      start.hidden = true;
+      start.disabled = false;
+    } else {
+      start.textContent = "Enter / tocar para comecar";
+      start.disabled = false;
+    }
+  }
+
   function startBuyPhase() {
     phase = "buy";
+    buyCountdown = 10;
     resetPlayer();
     spawnBots();
     showBuy(true);
-    setMessage("Rodada " + round, "Compre e entre no mapa.", 1300);
+    setMessage("Rodada " + round, "10 segundos para comprar.", 1600);
   }
 
   function startRound() {
@@ -1282,6 +1334,7 @@
       return;
     }
     phase = "live";
+    buyCountdown = 0;
     showBuy(false);
     lockPointer();
     setMessage("Rodada " + round, "Use cobertura e limpe o mapa.", 1300);
@@ -1316,9 +1369,10 @@
   }
 
   function renderBuy() {
+    const seconds = Math.max(0, Math.ceil(buyCountdown));
     el("buyMoney").textContent = "$" + player.money;
     el("closeBuy").textContent = net.mode === "online" ? "Fechar loja" : "Jogar agora";
-    el("playRound").textContent = net.mode === "online" ? "Fechar loja" : "Entrar na rodada";
+    el("playRound").textContent = net.mode === "online" ? "Fechar loja" : "Entrar na rodada" + (phase === "buy" && seconds > 0 ? " (" + seconds + "s)" : "");
     el("weaponCards").innerHTML = WEAPON_ORDER.map(id => {
       const w = WEAPONS[id];
       const owned = player.owned.has(id);
@@ -1837,6 +1891,15 @@
     }
   }
 
+  function updateBuyCountdown(dt) {
+    if (net.mode !== "offline" || phase !== "buy" || buyCountdown <= 0) return;
+    const before = Math.ceil(buyCountdown);
+    buyCountdown = Math.max(0, buyCountdown - dt);
+    const after = Math.ceil(buyCountdown);
+    if (before !== after) renderBuy();
+    if (buyCountdown <= 0) startRound();
+  }
+
   function updateHud() {
     el("hp").textContent = Math.ceil(player.hp);
     el("weapon").textContent = weapon().name;
@@ -1844,7 +1907,8 @@
     el("money").textContent = "$" + player.money;
     el("ctScore").textContent = "CT " + ctScore;
     el("trScore").textContent = trScore + " TR";
-    el("roundLabel").textContent = net.mode === "online" ? "4x4" : "R" + round;
+    el("roundLabel").textContent = net.mode === "online" ? "4x4" : phase === "buy" && buyCountdown > 0 ? Math.ceil(buyCountdown) + "s" : "R" + round;
+    updateSessionBanner();
   }
 
   function drawMiniMap() {
@@ -1852,51 +1916,110 @@
     const ctx = c.getContext("2d");
     const w = c.width;
     const h = c.height;
+    const pad = 10;
+    const teamColor = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
+    const scale = Math.min((w - pad * 2) / WORLD_W, (h - pad * 2) / WORLD_D);
+    const worldLeft = -WORLD_W * scale / 2;
+    const worldTop = -WORLD_D * scale / 2;
+    const wallColor = wall => {
+      const label = wall.label || "";
+      if (label.includes("muro")) return "rgba(107, 115, 101, 0.95)";
+      if (label.includes("caixa")) return "rgba(160, 113, 54, 0.92)";
+      if (label.includes("container")) return "rgba(83, 133, 164, 0.95)";
+      if (label.includes("barril")) return "rgba(76, 133, 103, 0.95)";
+      if (label.includes("veiculo")) return "rgba(172, 91, 72, 0.95)";
+      if (label.includes("casa") || label.includes("oficina") || label.includes("mercado")) return "rgba(166, 156, 129, 0.94)";
+      return "rgba(196, 194, 174, 0.86)";
+    };
+    const mapX = x => x * scale;
+    const mapZ = z => z * scale;
+    const fillRectWorld = (x, z, width, depth, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(mapX(x - width / 2), mapZ(z - depth / 2), width * scale, depth * scale);
+    };
+    const drawPlayerBlip = (x, z, yaw, color, size = 5) => {
+      ctx.save();
+      ctx.translate(mapX(x), mapZ(z));
+      ctx.rotate(-yaw);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "rgba(6, 8, 6, 0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -size - 2);
+      ctx.lineTo(size, size);
+      ctx.lineTo(0, size * 0.48);
+      ctx.lineTo(-size, size);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+    };
+
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(w / 2, h / 2);
-    ctx.fillStyle = "rgba(10, 13, 9, 0.95)";
-    ctx.beginPath();
-    ctx.arc(0, 0, w / 2 - 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.clip();
-    const sx = (w - 20) / WORLD_W;
-    const sz = (h - 20) / WORLD_D;
-    const scale = Math.min(sx, sz);
+
+    ctx.fillStyle = "rgba(9, 12, 9, 0.96)";
+    ctx.fillRect(worldLeft - 5, worldTop - 5, WORLD_W * scale + 10, WORLD_D * scale + 10);
+    fillRectWorld(0, 0, WORLD_W, WORLD_D, "rgba(54, 68, 45, 0.72)");
+    fillRectWorld(0, 0, WORLD_W * 0.72, 18, "rgba(36, 40, 35, 0.82)");
+
     ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.strokeRect(-WORLD_W * scale / 2, -WORLD_D * scale / 2, WORLD_W * scale, WORLD_D * scale);
-    ctx.fillStyle = "rgba(190,190,170,0.65)";
-    for (const wall of walls) {
-      ctx.fillRect((wall.x - wall.halfX) * scale, (wall.z - wall.halfZ) * scale, wall.halfX * 2 * scale, wall.halfZ * 2 * scale);
+    ctx.lineWidth = 1;
+    for (let x = -60; x <= 60; x += 20) {
+      ctx.beginPath();
+      ctx.moveTo(mapX(x), worldTop);
+      ctx.lineTo(mapX(x), worldTop + WORLD_D * scale);
+      ctx.stroke();
     }
-    ctx.fillStyle = "rgba(255, 207, 76, 0.55)";
-    ctx.fillRect((42 - 9) * scale, (42 - 7) * scale, 18 * scale, 14 * scale);
+    for (let z = -40; z <= 40; z += 20) {
+      ctx.beginPath();
+      ctx.moveTo(worldLeft, mapZ(z));
+      ctx.lineTo(worldLeft + WORLD_W * scale, mapZ(z));
+      ctx.stroke();
+    }
+
+    fillRectWorld(42, 42, 18, 14, "rgba(255, 207, 76, 0.48)");
+    fillRectWorld(0, 51, 40, 8, "rgba(116, 199, 255, 0.15)");
+    fillRectWorld(0, -51, 40, 8, "rgba(242, 184, 91, 0.15)");
+
+    for (const wall of walls) {
+      ctx.fillStyle = wallColor(wall);
+      if ((wall.label || "").includes("barril")) {
+        ctx.beginPath();
+        ctx.arc(mapX(wall.x), mapZ(wall.z), Math.max(2.1, wall.halfX * scale), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(mapX(wall.x - wall.halfX), mapZ(wall.z - wall.halfZ), wall.halfX * 2 * scale, wall.halfZ * 2 * scale);
+      }
+    }
+
+    ctx.strokeStyle = "rgba(245,242,232,0.26)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(worldLeft, worldTop, WORLD_W * scale, WORLD_D * scale);
+
     if (net.mode === "online") {
       for (const other of net.players) {
-        if (!other.alive || other.id === net.id) continue;
-        ctx.fillStyle = other.team === "CT" ? "#73b9ff" : "#f2b85b";
-        ctx.beginPath();
-        ctx.arc(other.x * scale, other.z * scale, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      for (const bot of bots) {
-        if (!bot.alive) continue;
-        ctx.fillStyle = "#f2b85b";
-        ctx.beginPath();
-        ctx.arc(bot.position.x * scale, bot.position.z * scale, 3, 0, Math.PI * 2);
-        ctx.fill();
+        if (!other.alive || other.id === net.id || other.team !== net.team) continue;
+        drawPlayerBlip(other.x, other.z, other.yaw || 0, teamColor, 4);
       }
     }
-    ctx.fillStyle = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
+
+    drawPlayerBlip(player.position.x, player.position.z, player.yaw, teamColor, 5);
+
+    ctx.strokeStyle = teamColor;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(player.position.x * scale, player.position.z * scale, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
-    ctx.beginPath();
-    ctx.moveTo(player.position.x * scale, player.position.z * scale);
-    ctx.lineTo((player.position.x - Math.sin(player.yaw) * 6) * scale, (player.position.z - Math.cos(player.yaw) * 6) * scale);
+    ctx.moveTo(mapX(player.position.x), mapZ(player.position.z));
+    ctx.lineTo(mapX(player.position.x - Math.sin(player.yaw) * 10), mapZ(player.position.z - Math.cos(player.yaw) * 10));
     ctx.stroke();
+
+    ctx.fillStyle = "rgba(245,242,232,0.72)";
+    ctx.font = "900 9px Inter, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("A", mapX(42), mapZ(42) + 3);
+    ctx.fillStyle = teamColor;
+    ctx.fillText("TIME", worldLeft + 21, worldTop + 13);
     ctx.restore();
   }
 
@@ -1929,6 +2052,7 @@
     if ((phase === "live" || (net.mode === "online" && phase === "warmup")) && (mouse.down || touchInput.firing)) shoot();
     updateTracers(dt);
     updateParticles(dt);
+    updateBuyCountdown(dt);
     updateViewEffects();
     updateCamera();
     updateHud();
@@ -1948,7 +2072,13 @@
   function bindEvents() {
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", event => {
+      const target = event.target;
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
       keys[event.code] = true;
+      if (event.code === "Enter" && !typing && net.mode === "online" && net.joined) {
+        event.preventDefault();
+        activateSessionStart();
+      }
       if (event.code === "Space") {
         event.preventDefault();
         tryJump();
@@ -2061,6 +2191,7 @@
     });
     el("settingsButton").addEventListener("click", () => toggleQuickSettings());
     el("closeSettings").addEventListener("click", () => toggleQuickSettings(false));
+    el("sessionStart").addEventListener("click", activateSessionStart);
     el("refreshRooms").addEventListener("click", refreshPublicRooms);
     el("publicRooms").addEventListener("click", event => {
       const roomButton = event.target.closest("[data-join-room]");
