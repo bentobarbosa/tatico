@@ -381,6 +381,113 @@ canvas {
   transform: scale(1);
 }
 
+/* ── Lock prompt ── */
+#lockPrompt {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#lockPrompt[hidden] { display: none; }
+
+.lock-inner {
+  background: rgba(10, 14, 8, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 20px 32px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.lock-inner p {
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.lock-inner small {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* ── Chat ── */
+#chatPanel {
+  position: fixed;
+  left: 12px;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 14;
+  pointer-events: none;
+  width: min(380px, calc(100vw - 24px));
+}
+
+#chatMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 150px;
+  overflow: hidden;
+}
+
+.chat-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: #eee;
+  text-shadow: 0 1px 4px #000, 0 0 10px #000;
+  line-height: 1.35;
+  transition: opacity 3s ease;
+}
+
+.chat-msg .ct-name { color: #73b9ff; }
+.chat-msg .tr-name { color: #f2b85b; }
+
+#chatForm {
+  pointer-events: auto;
+  margin-top: 5px;
+}
+
+#chatInput {
+  width: 100%;
+  background: rgba(10, 14, 8, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  outline: none;
+}
+
+#chatInput::placeholder { color: rgba(255, 255, 255, 0.4); }
+
+/* ── Sensitivity slider ── */
+.sens-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.sens-row input[type="range"] {
+  flex: 1;
+  accent-color: #9ccc65;
+  cursor: pointer;
+}
+
+#sensValue {
+  min-width: 36px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #9ccc65;
+  text-align: right;
+}
+
 #buyButton {
   position: fixed;
   right: 16px;

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Tatico 3D</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <div id="loading">Carregando Tatico 3D...</div>
@@ -37,6 +37,18 @@
     <div id="crosshair" class="crosshair-pro" aria-label="Mira">
       <span></span><span></span><span></span><span></span><i></i>
     </div>
+    <div id="lockPrompt" hidden>
+      <div class="lock-inner">
+        <p>Clique para jogar</p>
+        <small>Mouse travado · ESC para soltar</small>
+      </div>
+    </div>
+    <div id="chatPanel">
+      <div id="chatMessages"></div>
+      <form id="chatForm" hidden autocomplete="off">
+        <input id="chatInput" maxlength="80" placeholder="Mensagem… (Enter envia · ESC cancela)">
+      </form>
+    </div>
     <button id="settingsButton" type="button">Opções (C)</button>
     <button id="buyButton" type="button">Comprar (B)</button>
     <div id="quickSettings" class="quick-settings" hidden>
@@ -49,6 +61,11 @@
         <button class="crosshair-option crosshair-preview-pro" type="button" data-crosshair="pro" aria-label="Mira verde com aro"></button>
         <button class="crosshair-option crosshair-preview-yellow" type="button" data-crosshair="yellow" aria-label="Mira amarela"></button>
         <button class="crosshair-option crosshair-preview-cyan" type="button" data-crosshair="cyan" aria-label="Mira ciano"></button>
+      </div>
+      <span>Sensibilidade</span>
+      <div class="sens-row">
+        <input type="range" id="sensSlider" min="0.2" max="5" step="0.1" value="1">
+        <span id="sensValue">1.0×</span>
       </div>
       <span>Ambiente</span>
       <div class="time-options">
@@ -171,6 +188,6 @@
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="game.js?v=8"></script>
+  <script src="game.js?v=9"></script>
 </body>
 </html>

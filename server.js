@@ -707,6 +707,16 @@ function handleFire(socket, data) {
   broadcastState(room);
 }
 
+function handleChat(socket, data) {
+  const player = playerBySocket.get(socket);
+  if (!player) return;
+  const text = String(data.text || "").slice(0, 80).trim();
+  if (!text) return;
+  const room = roomByCode.get(player.room);
+  if (!room) return;
+  broadcast(room, { type: "chat", name: player.name, team: player.team, text });
+}
+
 function handleSocketMessage(socket, message) {
   let data;
   try {
@@ -719,6 +729,7 @@ function handleSocketMessage(socket, message) {
   else if (data.type === "state") handleState(socket, data);
   else if (data.type === "fire") handleFire(socket, data);
   else if (data.type === "buy") handleBuy(socket, data);
+  else if (data.type === "chat") handleChat(socket, data);
 }
 
 function readFrames(socket, chunk) {

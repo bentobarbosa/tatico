@@ -124,6 +124,9 @@
   };
 
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
+  let sensMult = parseFloat(localStorage.getItem("taticoSens") || "1");
+  let intentionalExit = false;
+  let chatOpen = false;
   const crosshairStyles = ["pro", "yellow", "cyan"];
   let crosshairStyle = localStorage.getItem("taticoCrosshair") || "pro";
   const timeModes = ["day", "night"];
@@ -1215,6 +1218,11 @@
       return;
     }
 
+    if (data.type === "chat") {
+      addChatMsg(data.name, data.text, data.team);
+      return;
+    }
+
     if (data.type === "error") {
       setMessage(net.joined ? "Aviso online" : "Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
       if (net.joined) return;
@@ -1419,9 +1427,59 @@
     return net.mode === "online" && phase === "buy" && !buyMenuOpen();
   }
 
-  function aimByDelta(dx, dy, sensitivity = 1) {
-    player.yaw -= dx * 0.0022 * sensitivity;
-    player.pitch = clamp(player.pitch - dy * 0.002 * sensitivity, -1.18, 1.08);
+  function aimByDelta(dx, dy, internalMult = 1) {
+    player.yaw -= dx * 0.0022 * sensMult * internalMult;
+    player.pitch = clamp(player.pitch - dy * 0.002 * sensMult * internalMult, -1.18, 1.08);
+  }
+
+  function setSensitivity(v) {
+    sensMult = clamp(parseFloat(v) || 1, 0.2, 5);
+    localStorage.setItem("taticoSens", sensMult);
+    const slider = el("sensSlider");
+    const label = el("sensValue");
+    if (slider) slider.value = sensMult;
+    if (label) label.textContent = sensMult.toFixed(1) + "×";
+  }
+
+  function openChat() {
+    if (chatOpen) return;
+    chatOpen = true;
+    el("chatForm").hidden = false;
+    el("chatInput").focus();
+    intentionalExit = true;
+    if (document.pointerLockElement) document.exitPointerLock?.();
+  }
+
+  function closeChat() {
+    if (!chatOpen) return;
+    chatOpen = false;
+    el("chatForm").hidden = true;
+    el("chatInput").value = "";
+    intentionalExit = false;
+    lockPointer();
+  }
+
+  function addChatMsg(name, text, team) {
+    const panel = el("chatMessages");
+    if (!panel) return;
+    const div = document.createElement("div");
+    div.className = "chat-msg";
+    const nameEl = document.createElement("b");
+    nameEl.className = team === "CT" ? "ct-name" : team === "TR" ? "tr-name" : "";
+    nameEl.textContent = name + ": ";
+    div.appendChild(nameEl);
+    div.appendChild(document.createTextNode(text));
+    panel.appendChild(div);
+    while (panel.children.length > 8) panel.removeChild(panel.firstChild);
+    setTimeout(() => { div.style.opacity = "0"; setTimeout(() => div.remove(), 3000); }, 7000);
+  }
+
+  function sendChat(text) {
+    const t = text.trim().slice(0, 80);
+    if (!t) return;
+    const team = net.mode === "online" ? net.team : "CT";
+    addChatMsg(getPlayerName(), t, team);
+    if (net.mode === "online") sendOnline({ type: "chat", text: t });
   }
 
   function enableMouseLook(x = mouse.lastX, y = mouse.lastY) {
@@ -2071,6 +2129,34 @@
 
   function bindEvents() {
     window.addEventListener("resize", onResize);
+
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement === renderer.domElement) {
+        el("lockPrompt").hidden = true;
+        intentionalExit = false;
+      } else if (!intentionalExit && canControlPlayer() && !chatOpen) {
+        el("lockPrompt").hidden = false;
+      }
+    });
+
+    el("lockPrompt").addEventListener("click", () => {
+      el("lockPrompt").hidden = true;
+      intentionalExit = false;
+      lockPointer();
+    });
+
+    el("chatForm").addEventListener("submit", event => {
+      event.preventDefault();
+      sendChat(el("chatInput").value);
+      closeChat();
+    });
+
+    el("chatInput").addEventListener("keydown", event => {
+      if (event.code === "Escape") { event.preventDefault(); closeChat(); }
+    });
+
+    el("sensSlider").addEventListener("input", event => setSensitivity(event.target.value));
+
     window.addEventListener("keydown", event => {
       const target = event.target;
       const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
@@ -2087,11 +2173,18 @@
       if (event.code === "KeyC") toggleQuickSettings();
       if (event.code === "KeyN") setTimeMode(worldTime === "night" ? "day" : "night");
       if (event.code === "KeyB" && phase === "buy") showBuy(true);
+      if (event.code === "Enter" && !chatOpen && canControlPlayer()) {
+        openChat();
+        event.preventDefault();
+      }
       if (event.code === "Escape") {
+        if (chatOpen) { closeChat(); return; }
+        intentionalExit = true;
         mouse.freeLook = false;
         mouse.down = false;
         mouse.lookHeld = false;
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock?.();
+        el("lockPrompt").hidden = true;
         toggleQuickSettings(false);
         if (phase === "buy") showBuy(true);
       }
@@ -2290,6 +2383,7 @@
     el("playerName").value = localStorage.getItem("taticoName") || "";
     updateManualUi();
     setCrosshairStyle(crosshairStyle);
+    setSensitivity(sensMult);
     setTimeMode(worldTime);
     refreshPublicRooms();
     window.setInterval(() => {
