@@ -20,6 +20,15 @@ canvas {
   display: block;
 }
 
+#gameCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  cursor: crosshair;
+  outline: 0;
+  touch-action: none;
+}
+
 #loading {
   position: fixed;
   inset: 0;

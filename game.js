@@ -40,6 +40,9 @@
   renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.domElement.id = "gameCanvas";
+  renderer.domElement.tabIndex = 0;
+  renderer.domElement.setAttribute("aria-label", "Area do jogo Tatico 3D");
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
 
@@ -60,7 +63,7 @@
 
   const clock = new THREE.Clock();
   const keys = {};
-  const mouse = { down: false, lookHeld: false, lastX: 0, lastY: 0 };
+  const mouse = { down: false, lookHeld: false, freeLook: false, lastX: 0, lastY: 0 };
   const walls = [];
   const bots = [];
   const remotePlayers = new Map();
@@ -921,10 +924,23 @@
     player.pitch = clamp(player.pitch - dy * 0.002 * sensitivity, -1.18, 1.08);
   }
 
+  function enableMouseLook(x = mouse.lastX, y = mouse.lastY) {
+    mouse.freeLook = true;
+    mouse.lastX = x;
+    mouse.lastY = y;
+    renderer.domElement.focus?.();
+  }
+
   function lockPointer() {
     if (document.pointerLockElement !== renderer.domElement) {
       const request = renderer.domElement.requestPointerLock?.();
-      if (request?.catch) request.catch(() => {});
+      if (request?.catch) {
+        request.catch(() => {
+          enableMouseLook();
+        });
+      } else if (!renderer.domElement.requestPointerLock) {
+        enableMouseLook();
+      }
     }
   }
 
@@ -1425,6 +1441,10 @@
       if (event.code === "KeyR") reload();
       if (event.code === "KeyB" && phase === "buy" && net.mode !== "online") showBuy(true);
       if (event.code === "Escape") {
+        mouse.freeLook = false;
+        mouse.down = false;
+        mouse.lookHeld = false;
+        if (document.pointerLockElement === renderer.domElement) document.exitPointerLock?.();
         if (phase === "buy") showBuy(true);
       }
     });
@@ -1435,10 +1455,12 @@
       if (phase !== "live") return;
       if (document.pointerLockElement === renderer.domElement) {
         aimByDelta(event.movementX, event.movementY);
-      } else if (mouse.lookHeld && (event.buttons & 1)) {
+      } else if (mouse.freeLook || (mouse.lookHeld && (event.buttons & 1))) {
         const dx = event.movementX || event.clientX - mouse.lastX;
         const dy = event.movementY || event.clientY - mouse.lastY;
-        aimByDelta(dx, dy, 0.85);
+        if (Math.abs(dx) < 160 && Math.abs(dy) < 160) {
+          aimByDelta(dx, dy, 0.9);
+        }
       }
       mouse.lastX = event.clientX;
       mouse.lastY = event.clientY;
@@ -1455,6 +1477,7 @@
         return;
       }
       if (event.button !== 0) return;
+      enableMouseLook(event.clientX, event.clientY);
       lockPointer();
       mouse.down = true;
       mouse.lookHeld = true;
@@ -1491,12 +1514,16 @@
     window.addEventListener("blur", () => {
       mouse.down = false;
       mouse.lookHeld = false;
+      mouse.freeLook = false;
       touchInput.firing = false;
       resetTouchStick();
     });
     renderer.domElement.addEventListener("contextmenu", event => event.preventDefault());
-    renderer.domElement.addEventListener("click", () => {
-      if (phase === "live" && !touchInput.used) lockPointer();
+    renderer.domElement.addEventListener("click", event => {
+      if (phase === "live" && !touchInput.used) {
+        enableMouseLook(event.clientX, event.clientY);
+        lockPointer();
+      }
     });
     el("startButton").addEventListener("click", startGame);
     el("onlineButton").addEventListener("click", () => startOnlineGame("quick"));
