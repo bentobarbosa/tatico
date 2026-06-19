@@ -60,7 +60,7 @@
 
   const clock = new THREE.Clock();
   const keys = {};
-  const mouse = { down: false };
+  const mouse = { down: false, lookHeld: false, lastX: 0, lastY: 0 };
   const walls = [];
   const bots = [];
   const remotePlayers = new Map();
@@ -97,12 +97,27 @@
     players: [],
     scores: { CT: 0, TR: 0 },
     slots: { CT: 0, TR: 0 },
+    room: null,
+    pendingRoomMode: "quick",
+    pendingRoomCode: "",
+    pendingPrivate: false,
     lastSend: 0,
     spawnId: -1,
     joined: false
   };
 
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
+  const touchInput = {
+    used: false,
+    moveId: null,
+    lookId: null,
+    moveX: 0,
+    moveY: 0,
+    lastLookX: 0,
+    lastLookY: 0,
+    firing: false,
+    slow: false
+  };
 
   function weapon() {
     return WEAPONS[player.weaponId];
@@ -132,6 +147,10 @@
     containerBlue: makeMat(0x315e7e, 0.68),
     containerRed: makeMat(0x85483c, 0.68),
     barrel: makeMat(0x365b4a, 0.58),
+    house: makeMat(0x9b8b72, 0.82),
+    houseDark: makeMat(0x6f705e, 0.86),
+    roof: makeMat(0x564337, 0.78),
+    windowLit: makeMat(0xd9c06a, 0.35),
     glass: new THREE.MeshStandardMaterial({ color: 0x8dc3d6, roughness: 0.22, metalness: 0.05, transparent: true, opacity: 0.42 })
   };
 
@@ -253,6 +272,81 @@
     scene.add(lamp);
   }
 
+  function addHouse(x, z, w, d, h, mat = mats.house, label = "casa") {
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    body.position.y = h / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.9, 0.65, d + 0.9), mats.roof);
+    roof.position.y = h + 0.35;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    group.add(roof);
+
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.1, 0.08), mats.black);
+    door.position.set(-w * 0.24, 1.05, -d / 2 - 0.045);
+    group.add(door);
+
+    [-0.18, 0.24].forEach(offset => {
+      const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.78, 0.09), mats.windowLit);
+      windowMesh.position.set(w * offset, 2.62, -d / 2 - 0.055);
+      group.add(windowMesh);
+    });
+
+    const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.78, 1.25), mats.glass);
+    sideWindow.position.set(w / 2 + 0.055, 2.45, d * 0.18);
+    group.add(sideWindow);
+
+    group.position.set(x, 0, z);
+    scene.add(group);
+    walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h: h + 0.7, mesh: group, label });
+    return group;
+  }
+
+  function addVehicle(x, z, rot = 0, colorMat = mats.containerRed) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.9, 2.25), colorMat);
+    body.position.y = 0.85;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.86, 1.75), mats.glass);
+    cabin.position.set(-0.35, 1.38, 0);
+    cabin.castShadow = true;
+    group.add(cabin);
+
+    [-1.55, 1.55].forEach(px => {
+      [-0.96, 0.96].forEach(pz => {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.28, 12), mats.black);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(px, 0.42, pz);
+        wheel.castShadow = true;
+        group.add(wheel);
+      });
+    });
+
+    group.position.set(x, 0, z);
+    group.rotation.y = rot;
+    scene.add(group);
+
+    const horizontal = Math.abs(Math.cos(rot)) > 0.7;
+    walls.push({
+      x,
+      z,
+      halfX: horizontal ? 2.4 : 1.12,
+      halfZ: horizontal ? 1.12 : 2.4,
+      h: 1.75,
+      mesh: group,
+      label: "veiculo"
+    });
+    return group;
+  }
+
   function buildMap() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, WORLD_D), mats.floor);
     floor.rotation.x = -Math.PI / 2;
@@ -305,6 +399,23 @@
     addContainer(46, -38, Math.PI / 2, mats.containerBlue);
     addContainer(-61, 2, Math.PI / 2, mats.containerBlue);
     addContainer(62, -2, Math.PI / 2, mats.containerRed);
+
+    addHouse(-68, 34, 11, 10, 4.4, mats.house, "casa oeste");
+    addHouse(-68, -43, 12, 9, 4.2, mats.houseDark, "casa rural");
+    addHouse(68, 35, 10, 11, 4.5, mats.house, "casa norte");
+    addHouse(68, -44, 11, 10, 4.2, mats.houseDark, "oficina");
+    addHouse(-36, -26, 10, 8, 3.8, mats.house, "mercado baixo");
+    addHouse(36, 27, 10, 8, 3.8, mats.houseDark, "mercado alto");
+
+    addVehicle(-58, -9, Math.PI / 2, mats.containerBlue);
+    addVehicle(58, 9, Math.PI / 2, mats.containerRed);
+    addVehicle(-38, -52, 0, mats.containerRed);
+    addVehicle(38, 52, 0, mats.containerBlue);
+
+    addBox(-66, 13, 12, 1.2, 1.8, mats.brick, "mureta vila");
+    addBox(66, -15, 12, 1.2, 1.8, mats.brick, "mureta oficina");
+    addBox(-38, 52, 18, 1.2, 1.6, mats.darkWall, "mureta ct");
+    addBox(38, -52, 18, 1.2, 1.6, mats.darkWall, "mureta tr");
 
     [-24, -20, 20, 24].forEach(x => addBarrel(x, -8));
     [-46, -43, 43, 46].forEach(x => addBarrel(x, 18));
@@ -502,6 +613,7 @@
     net.joined = false;
     net.players = [];
     net.slots = { CT: 0, TR: 0 };
+    net.room = null;
     net.spawnId = -1;
     el("onlinePanel").hidden = true;
     clearRemotePlayers();
@@ -528,16 +640,29 @@
     return null;
   }
 
-  function startOnlineGame() {
+  function cleanRoomCode() {
+    return (el("roomCode").value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  }
+
+  function startOnlineGame(roomMode = "quick") {
     const url = onlineSocketUrl();
     if (!url) {
       setMessage("Abra pelo servidor", "Use o Render ou rode npm start.", 3600);
       return;
     }
 
+    const roomCode = cleanRoomCode();
+    if (roomMode === "join" && roomCode.length < 4) {
+      setMessage("Codigo da sala", "Digite o codigo que seu amigo recebeu.", 2600);
+      return;
+    }
+
     net.mode = "online";
     disconnectOnline();
     net.mode = "online";
+    net.pendingRoomMode = roomMode;
+    net.pendingRoomCode = roomCode;
+    net.pendingPrivate = el("privateRoom").checked;
     phase = "connecting";
     player.money = 0;
     player.owned = new Set(WEAPON_ORDER);
@@ -550,12 +675,19 @@
   }
 
   function connectOnline(url) {
-    setMessage("Conectando 4x4", "Entrando na sala online...", 3000);
+    const modeLabel = net.pendingRoomMode === "create" ? "Criando sala" : net.pendingRoomMode === "join" ? "Entrando por codigo" : "Procurando sala";
+    setMessage(modeLabel, "Conectando no servidor 4x4...", 3000);
     const ws = new WebSocket(url);
     net.ws = ws;
 
     ws.addEventListener("open", () => {
-      sendOnline({ type: "join", name: getPlayerName() });
+      sendOnline({
+        type: "join",
+        name: getPlayerName(),
+        roomMode: net.pendingRoomMode,
+        roomCode: net.pendingRoomCode,
+        private: net.pendingPrivate
+      });
     });
 
     ws.addEventListener("message", event => {
@@ -575,6 +707,7 @@
       el("startScreen").classList.remove("hidden");
       el("buyButton").hidden = false;
       disconnectOnline();
+      net.mode = "offline";
     });
 
     ws.addEventListener("error", () => {
@@ -591,6 +724,7 @@
     if (data.type === "joined") {
       net.id = data.id;
       net.team = data.team;
+      net.room = data.room || null;
       net.joined = true;
       phase = "live";
       player.alive = true;
@@ -600,7 +734,8 @@
       player.pitch = 0;
       ctScore = data.scores?.CT || 0;
       trScore = data.scores?.TR || 0;
-      setMessage("Voce entrou no " + data.team, "Clique no jogo para travar a mira.", 2300);
+      const roomText = net.room?.code ? "Sala " + net.room.code : "Sala online";
+      setMessage("Voce entrou no " + data.team, roomText + " · clique no jogo para mirar.", 3000);
       el("onlinePanel").hidden = false;
       updateOnlinePanel();
       return;
@@ -610,6 +745,7 @@
       net.players = data.players || [];
       net.scores = data.scores || net.scores;
       net.slots = data.slots || net.slots;
+      net.room = data.room || net.room;
       round = data.round || round;
       ctScore = net.scores.CT || 0;
       trScore = net.scores.TR || 0;
@@ -618,7 +754,10 @@
       if (self) {
         player.hp = self.hp;
         player.alive = self.alive;
-        if (!self.alive) mouse.down = false;
+        if (!self.alive) {
+          mouse.down = false;
+          touchInput.firing = false;
+        }
         if (self.spawnId !== net.spawnId) {
           net.spawnId = self.spawnId;
           player.position.set(self.x, PLAYER_HEIGHT, self.z);
@@ -658,7 +797,9 @@
       setMessage("Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
       phase = "menu";
       el("startScreen").classList.remove("hidden");
+      el("buyButton").hidden = false;
       disconnectOnline();
+      net.mode = "offline";
     }
   }
 
@@ -693,7 +834,9 @@
       return;
     }
     el("onlinePanel").hidden = false;
-    el("onlineTitle").textContent = "Online 4x4";
+    const code = net.room?.code || "----";
+    const privacy = net.room?.public === false ? "Privada" : "Publica";
+    el("onlineTitle").textContent = "Sala " + code + " · " + privacy;
     el("onlineTeam").textContent = (net.team ? "Seu time: " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
 
     const dots = [];
@@ -773,9 +916,15 @@
     updateHud();
   }
 
+  function aimByDelta(dx, dy, sensitivity = 1) {
+    player.yaw -= dx * 0.0022 * sensitivity;
+    player.pitch = clamp(player.pitch - dy * 0.002 * sensitivity, -1.18, 1.08);
+  }
+
   function lockPointer() {
     if (document.pointerLockElement !== renderer.domElement) {
-      renderer.domElement.requestPointerLock?.();
+      const request = renderer.domElement.requestPointerLock?.();
+      if (request?.catch) request.catch(() => {});
     }
   }
 
@@ -1003,11 +1152,17 @@
     if (keys.KeyS) { mx -= f.x; mz -= f.z; }
     if (keys.KeyD) { mx += r.x; mz += r.z; }
     if (keys.KeyA) { mx -= r.x; mz -= r.z; }
+    if (Math.abs(touchInput.moveX) > 0.05 || Math.abs(touchInput.moveY) > 0.05) {
+      const forward = -touchInput.moveY;
+      const side = touchInput.moveX;
+      mx += f.x * forward + r.x * side;
+      mz += f.z * forward + r.z * side;
+    }
     const len = Math.hypot(mx, mz);
     if (len > 0) {
       mx /= len;
       mz /= len;
-      const speed = keys.ShiftLeft || keys.ShiftRight ? 3.0 : 6.1;
+      const speed = keys.ShiftLeft || keys.ShiftRight || touchInput.slow ? 3.0 : 6.1;
       moveCircle(player, mx * speed * dt, mz * speed * dt, PLAYER_RADIUS);
     }
     if (player.reloading && performance.now() >= player.reloadEnd) {
@@ -1220,6 +1375,20 @@
     ctx.restore();
   }
 
+  function updateTouchControls() {
+    const shouldShow = phase === "live" && ("ontouchstart" in window || touchInput.used || matchMedia("(pointer: coarse)").matches);
+    el("touchControls").hidden = !shouldShow;
+    el("touchBuy").hidden = net.mode === "online";
+    el("touchWalk").classList.toggle("active", touchInput.slow);
+  }
+
+  function resetTouchStick() {
+    touchInput.moveId = null;
+    touchInput.moveX = 0;
+    touchInput.moveY = 0;
+    el("touchKnob").style.transform = "translate(-50%, -50%)";
+  }
+
   function loop() {
     const dt = Math.min(clock.getDelta(), 0.05);
     if (phase === "live" || phase === "round_end") {
@@ -1231,11 +1400,12 @@
         updateRound(dt);
       }
     }
-    if (phase === "live" && mouse.down) shoot();
+    if (phase === "live" && (mouse.down || touchInput.firing)) shoot();
     updateTracers(dt);
     updateParticles(dt);
     updateCamera();
     updateHud();
+    updateTouchControls();
     drawMiniMap();
     if (performance.now() > messageUntil) el("message").innerHTML = "";
     renderer.render(scene, camera);
@@ -1262,30 +1432,79 @@
       keys[event.code] = false;
     });
     window.addEventListener("mousemove", event => {
-      if (document.pointerLockElement !== renderer.domElement || phase !== "live") return;
-      player.yaw -= event.movementX * 0.0022;
-      player.pitch = clamp(player.pitch - event.movementY * 0.002, -1.18, 1.08);
+      if (phase !== "live") return;
+      if (document.pointerLockElement === renderer.domElement) {
+        aimByDelta(event.movementX, event.movementY);
+      } else if (mouse.lookHeld && (event.buttons & 1)) {
+        const dx = event.movementX || event.clientX - mouse.lastX;
+        const dy = event.movementY || event.clientY - mouse.lastY;
+        aimByDelta(dx, dy, 0.85);
+      }
+      mouse.lastX = event.clientX;
+      mouse.lastY = event.clientY;
     });
     renderer.domElement.addEventListener("pointerdown", event => {
-      if (event.button !== 0 && event.pointerType !== "touch") return;
-      if (phase === "live") {
-        lockPointer();
-        mouse.down = true;
-        shoot();
+      if (phase !== "live") return;
+      if (event.pointerType === "touch") {
+        touchInput.used = true;
+        touchInput.lookId = event.pointerId;
+        touchInput.lastLookX = event.clientX;
+        touchInput.lastLookY = event.clientY;
+        renderer.domElement.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+      if (event.button !== 0) return;
+      lockPointer();
+      mouse.down = true;
+      mouse.lookHeld = true;
+      mouse.lastX = event.clientX;
+      mouse.lastY = event.clientY;
+      shoot();
+    });
+    renderer.domElement.addEventListener("pointermove", event => {
+      if (phase !== "live" || event.pointerType !== "touch" || event.pointerId !== touchInput.lookId) return;
+      const dx = event.clientX - touchInput.lastLookX;
+      const dy = event.clientY - touchInput.lastLookY;
+      touchInput.lastLookX = event.clientX;
+      touchInput.lastLookY = event.clientY;
+      aimByDelta(dx, dy, 1.15);
+      event.preventDefault();
+    });
+    window.addEventListener("pointerup", event => {
+      if (event.pointerType === "touch" && event.pointerId === touchInput.lookId) {
+        touchInput.lookId = null;
+      }
+      if (event.pointerType !== "touch") {
+        mouse.down = false;
+        mouse.lookHeld = false;
       }
     });
-    window.addEventListener("pointerup", () => {
-      mouse.down = false;
+    window.addEventListener("pointercancel", event => {
+      if (event.pointerId === touchInput.lookId) touchInput.lookId = null;
+      if (event.pointerId === touchInput.moveId) resetTouchStick();
+      if (event.pointerType !== "touch") {
+        mouse.down = false;
+        mouse.lookHeld = false;
+      }
     });
     window.addEventListener("blur", () => {
       mouse.down = false;
+      mouse.lookHeld = false;
+      touchInput.firing = false;
+      resetTouchStick();
     });
     renderer.domElement.addEventListener("contextmenu", event => event.preventDefault());
     renderer.domElement.addEventListener("click", () => {
-      if (phase === "live") lockPointer();
+      if (phase === "live" && !touchInput.used) lockPointer();
     });
     el("startButton").addEventListener("click", startGame);
-    el("onlineButton").addEventListener("click", startOnlineGame);
+    el("onlineButton").addEventListener("click", () => startOnlineGame("quick"));
+    el("createRoomButton").addEventListener("click", () => startOnlineGame("create"));
+    el("joinRoomButton").addEventListener("click", () => startOnlineGame("join"));
+    el("roomCode").addEventListener("input", () => {
+      el("roomCode").value = cleanRoomCode();
+    });
     el("manualOn").addEventListener("click", () => setManual(true));
     el("manualOff").addEventListener("click", () => setManual(false));
     el("playRound").addEventListener("click", startRound);
@@ -1297,6 +1516,64 @@
     el("weaponCards").addEventListener("click", event => {
       const card = event.target.closest("[data-weapon]");
       if (card) buyWeapon(card.dataset.weapon);
+    });
+
+    const stick = el("touchMove");
+    const knob = el("touchKnob");
+    const setStick = event => {
+      const rect = stick.getBoundingClientRect();
+      const max = rect.width * 0.34;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const rawX = event.clientX - cx;
+      const rawY = event.clientY - cy;
+      const len = Math.hypot(rawX, rawY);
+      const scale = len > max ? max / len : 1;
+      const x = rawX * scale;
+      const y = rawY * scale;
+      touchInput.moveX = clamp(x / max, -1, 1);
+      touchInput.moveY = clamp(y / max, -1, 1);
+      knob.style.transform = "translate(calc(-50% + " + x + "px), calc(-50% + " + y + "px))";
+    };
+
+    stick.addEventListener("pointerdown", event => {
+      touchInput.used = true;
+      touchInput.moveId = event.pointerId;
+      stick.setPointerCapture?.(event.pointerId);
+      setStick(event);
+      event.preventDefault();
+    });
+    stick.addEventListener("pointermove", event => {
+      if (event.pointerId !== touchInput.moveId) return;
+      setStick(event);
+      event.preventDefault();
+    });
+    stick.addEventListener("pointerup", event => {
+      if (event.pointerId === touchInput.moveId) resetTouchStick();
+    });
+    stick.addEventListener("pointercancel", event => {
+      if (event.pointerId === touchInput.moveId) resetTouchStick();
+    });
+
+    el("touchFire").addEventListener("pointerdown", event => {
+      touchInput.used = true;
+      touchInput.firing = true;
+      el("touchFire").setPointerCapture?.(event.pointerId);
+      shoot();
+      event.preventDefault();
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(type => {
+      el("touchFire").addEventListener(type, () => {
+        touchInput.firing = false;
+      });
+    });
+    el("touchReload").addEventListener("click", reload);
+    el("touchBuy").addEventListener("click", () => {
+      if (phase === "buy") showBuy(true);
+      else setMessage("Compra fechada", "So da para comprar antes da rodada.", 1100);
+    });
+    el("touchWalk").addEventListener("click", () => {
+      touchInput.slow = !touchInput.slow;
     });
   }
 

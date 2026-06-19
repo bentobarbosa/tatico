@@ -237,6 +237,73 @@ canvas {
   cursor: pointer;
 }
 
+#touchControls {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  pointer-events: none;
+}
+
+.touch-stick {
+  position: absolute;
+  left: calc(24px + env(safe-area-inset-left));
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  width: 132px;
+  height: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(10, 12, 9, 0.45);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.06), 0 16px 30px rgba(0, 0, 0, 0.32);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-stick span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(200, 239, 104, 0.86);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+  transform: translate(-50%, -50%);
+}
+
+.touch-actions {
+  position: absolute;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: 88px 88px;
+  gap: 9px;
+  pointer-events: auto;
+}
+
+.touch-actions button {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(13, 15, 11, 0.72);
+  color: #f5f2e8;
+  font-size: 12px;
+  font-weight: 1000;
+  touch-action: none;
+}
+
+.touch-actions button.active {
+  border-color: #c8ef68;
+  background: rgba(200, 239, 104, 0.22);
+}
+
+.touch-actions .touch-fire {
+  grid-column: span 2;
+  min-height: 64px;
+  background: linear-gradient(135deg, rgba(242, 91, 91, 0.82), rgba(242, 184, 91, 0.72));
+  color: #140b08;
+  font-size: 17px;
+}
+
 #message {
   position: fixed;
   left: 50%;
@@ -462,6 +529,60 @@ button {
     rgba(255, 255, 255, 0.07);
 }
 
+.room-builder {
+  display: grid;
+  gap: 8px;
+}
+
+.room-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.room-row input,
+.room-row button,
+.private-toggle {
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f5f2e8;
+  font: inherit;
+  font-weight: 1000;
+}
+
+.room-row input {
+  min-width: 0;
+  padding: 0 12px;
+  text-transform: uppercase;
+  outline: 0;
+}
+
+.room-row input:focus {
+  border-color: #73b9ff;
+  box-shadow: 0 0 0 3px rgba(115, 185, 255, 0.16);
+}
+
+.room-row button {
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.private-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.private-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #c8ef68;
+}
+
 #onlineHint {
   color: rgba(245, 242, 232, 0.62);
   font-size: 12px;
@@ -478,7 +599,8 @@ button {
 #buyButton:active,
 .weapon-card:active,
 .online-start:active,
-.mode-choice button:active {
+.mode-choice button:active,
+.room-row button:active {
   transform: translateY(1px);
 }
 
@@ -596,5 +718,31 @@ button {
 
   .weapon-grid {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (pointer: fine) {
+  #touchControls {
+    display: none;
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  #buyButton {
+    display: none;
+  }
+
+  .touch-stick {
+    width: 118px;
+    height: 118px;
+  }
+
+  .touch-stick span {
+    width: 50px;
+    height: 50px;
+  }
+
+  .touch-actions {
+    grid-template-columns: 80px 80px;
   }
 }

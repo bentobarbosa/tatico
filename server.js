@@ -16,6 +16,8 @@ const PLAYER_HEIGHT = 1.72;
 const PLAYER_RADIUS = 0.55;
 const BOT_RADIUS = 0.62;
 const TICK_MS = 75;
+const ROOM_CAPACITY = 8;
+const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const WEAPONS = {
   pistol: { damage: 28, fireMs: 260, spread: 0.015, pellets: 1, range: 70 },
@@ -39,13 +41,9 @@ const mimeTypes = {
 };
 
 const sockets = new Set();
-const players = new Map();
+const rooms = new Map();
 const walls = [];
-const scores = { CT: 0, TR: 0 };
 let nextPlayerId = 1;
-let round = 1;
-let matchState = "waiting";
-let resetAt = 0;
 
 const spawns = {
   CT: [
@@ -96,6 +94,57 @@ function cleanName(value) {
     .slice(0, 16) || "Jogador";
 }
 
+function normalizeRoomCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+}
+
+function makeRoomCode() {
+  for (let tries = 0; tries < 80; tries++) {
+    let code = "";
+    for (let i = 0; i < 5; i++) {
+      code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+    }
+    if (!rooms.has(code)) return code;
+  }
+  return String(Date.now()).slice(-6);
+}
+
+function roomSummary(room) {
+  return {
+    code: room.code,
+    public: room.public,
+    players: room.players.size,
+    capacity: ROOM_CAPACITY
+  };
+}
+
+function createRoom(isPrivate = false) {
+  const room = {
+    code: makeRoomCode(),
+    public: !isPrivate,
+    sockets: new Set(),
+    players: new Map(),
+    scores: { CT: 0, TR: 0 },
+    round: 1,
+    matchState: "waiting",
+    resetAt: 0,
+    createdAt: Date.now()
+  };
+  rooms.set(room.code, room);
+  return room;
+}
+
+function findPublicRoom() {
+  let best = null;
+  for (const room of rooms.values()) {
+    if (!room.public || room.players.size >= ROOM_CAPACITY) continue;
+    if (!best || room.players.size > best.players.size || (room.players.size === best.players.size && room.createdAt < best.createdAt)) {
+      best = room;
+    }
+  }
+  return best;
+}
+
 function addBox(x, z, w, d, h) {
   walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h });
 }
@@ -117,6 +166,21 @@ function addContainer(x, z, rot = 0) {
 
 function addBarrel(x, z) {
   walls.push({ x, z, halfX: 0.62, halfZ: 0.62, h: 1.35 });
+}
+
+function addHouse(x, z, w, d, h) {
+  addBox(x, z, w, d, h + 0.7);
+}
+
+function addVehicle(x, z, rot = 0) {
+  const horizontal = Math.abs(Math.cos(rot)) > 0.7;
+  walls.push({
+    x,
+    z,
+    halfX: horizontal ? 2.4 : 1.12,
+    halfZ: horizontal ? 1.12 : 2.4,
+    h: 1.75
+  });
 }
 
 function buildCollisionMap() {
@@ -156,6 +220,23 @@ function buildCollisionMap() {
   addContainer(46, -38, Math.PI / 2);
   addContainer(-61, 2, Math.PI / 2);
   addContainer(62, -2, Math.PI / 2);
+
+  addHouse(-68, 34, 11, 10, 4.4);
+  addHouse(-68, -43, 12, 9, 4.2);
+  addHouse(68, 35, 10, 11, 4.5);
+  addHouse(68, -44, 11, 10, 4.2);
+  addHouse(-36, -26, 10, 8, 3.8);
+  addHouse(36, 27, 10, 8, 3.8);
+
+  addVehicle(-58, -9, Math.PI / 2);
+  addVehicle(58, 9, Math.PI / 2);
+  addVehicle(-38, -52, 0);
+  addVehicle(38, 52, 0);
+
+  addBox(-66, 13, 12, 1.2, 1.8);
+  addBox(66, -15, 12, 1.2, 1.8);
+  addBox(-38, 52, 18, 1.2, 1.6);
+  addBox(38, -52, 18, 1.2, 1.6);
 
   [-24, -20, 20, 24].forEach(x => addBarrel(x, -8));
   [-46, -43, 43, 46].forEach(x => addBarrel(x, 18));
@@ -234,29 +315,29 @@ function dirFromAngles(yaw, pitch) {
   };
 }
 
-function teamCount(team) {
+function teamCount(room, team) {
   let count = 0;
-  for (const player of players.values()) {
+  for (const player of room.players.values()) {
     if (player.team === team) count++;
   }
   return count;
 }
 
-function teamsReady() {
-  return teamCount("CT") > 0 && teamCount("TR") > 0;
+function teamsReady(room) {
+  return teamCount(room, "CT") > 0 && teamCount(room, "TR") > 0;
 }
 
-function assignTeam() {
-  const ct = teamCount("CT");
-  const tr = teamCount("TR");
+function assignTeam(room) {
+  const ct = teamCount(room, "CT");
+  const tr = teamCount(room, "TR");
   if (ct >= 4 && tr >= 4) return null;
   if (ct >= 4) return "TR";
   if (tr >= 4) return "CT";
   return ct <= tr ? "CT" : "TR";
 }
 
-function spawnPlayer(player) {
-  const teamPlayers = [...players.values()].filter(other => other.team === player.team);
+function spawnPlayer(room, player) {
+  const teamPlayers = [...room.players.values()].filter(other => other.team === player.team);
   const index = Math.max(0, teamPlayers.findIndex(other => other.id === player.id));
   const spawn = spawns[player.team][index % spawns[player.team].length];
   player.x = spawn.x;
@@ -271,8 +352,8 @@ function spawnPlayer(player) {
   player.spawnId++;
 }
 
-function serializePlayers() {
-  return [...players.values()].map(player => ({
+function serializePlayers(room) {
+  return [...room.players.values()].map(player => ({
     id: player.id,
     name: player.name,
     team: player.team,
@@ -319,67 +400,95 @@ function wsSend(socket, message) {
   }
 }
 
-function broadcast(message) {
-  for (const socket of sockets) wsSend(socket, message);
+function broadcast(room, message) {
+  for (const socket of room.sockets) wsSend(socket, message);
 }
 
-function broadcastState() {
-  if (!sockets.size) return;
-  broadcast({
+function broadcastState(room) {
+  if (!room.sockets.size) return;
+  broadcast(room, {
     type: "state",
-    players: serializePlayers(),
-    scores,
-    round,
-    matchState,
-    slots: { CT: teamCount("CT"), TR: teamCount("TR") }
+    players: serializePlayers(room),
+    scores: room.scores,
+    round: room.round,
+    matchState: room.matchState,
+    room: roomSummary(room),
+    slots: { CT: teamCount(room, "CT"), TR: teamCount(room, "TR") }
   });
 }
 
-function broadcastRound(title, sub) {
-  broadcast({ type: "round", title, sub, round, scores });
+function broadcastRound(room, title, sub) {
+  broadcast(room, {
+    type: "round",
+    title,
+    sub,
+    round: room.round,
+    scores: room.scores,
+    room: roomSummary(room)
+  });
 }
 
-function resetRound(title = "Nova rodada", sub = "Times reposicionados.") {
-  round++;
-  matchState = teamsReady() ? "live" : "waiting";
-  resetAt = 0;
-  for (const player of players.values()) spawnPlayer(player);
-  broadcastRound(title, sub);
-  broadcastState();
+function resetRound(room, title = "Nova rodada", sub = "Times reposicionados.") {
+  room.round++;
+  room.matchState = teamsReady(room) ? "live" : "waiting";
+  room.resetAt = 0;
+  for (const player of room.players.values()) spawnPlayer(room, player);
+  broadcastRound(room, title, sub);
+  broadcastState(room);
 }
 
-function aliveCount(team) {
+function aliveCount(room, team) {
   let count = 0;
-  for (const player of players.values()) {
+  for (const player of room.players.values()) {
     if (player.team === team && player.alive) count++;
   }
   return count;
 }
 
-function checkRoundEnd() {
-  if (!teamsReady() || matchState === "resetting") return;
-  const ctAlive = aliveCount("CT");
-  const trAlive = aliveCount("TR");
+function checkRoundEnd(room) {
+  if (!teamsReady(room) || room.matchState === "resetting") return;
+  const ctAlive = aliveCount(room, "CT");
+  const trAlive = aliveCount(room, "TR");
   if (ctAlive > 0 && trAlive > 0) {
-    matchState = "live";
+    room.matchState = "live";
     return;
   }
   if (ctAlive === 0 && trAlive === 0) {
-    matchState = "resetting";
-    resetAt = Date.now() + 3200;
-    broadcastRound("Rodada empatada", "Todo mundo caiu. Resetando...");
+    room.matchState = "resetting";
+    room.resetAt = Date.now() + 3200;
+    broadcastRound(room, "Rodada empatada", "Todo mundo caiu. Resetando...");
     return;
   }
 
   const winner = ctAlive > 0 ? "CT" : "TR";
-  scores[winner]++;
-  matchState = "resetting";
-  resetAt = Date.now() + 3200;
-  broadcastRound(winner + " venceu", "Nova rodada em alguns segundos.");
+  room.scores[winner]++;
+  room.matchState = "resetting";
+  room.resetAt = Date.now() + 3200;
+  broadcastRound(room, winner + " venceu", "Nova rodada em alguns segundos.");
+}
+
+function getRoomForJoin(data) {
+  const mode = data.roomMode === "create" || data.roomMode === "join" ? data.roomMode : "quick";
+  if (mode === "create") return createRoom(data.private === true);
+  if (mode === "join") return rooms.get(normalizeRoomCode(data.roomCode)) || null;
+  return findPublicRoom() || createRoom(false);
 }
 
 function handleJoin(socket, data) {
-  const team = assignTeam();
+  if (socket.playerId || socket.roomCode) return;
+  const room = getRoomForJoin(data);
+  if (!room) {
+    wsSend(socket, { type: "error", message: "Sala nao encontrada. Confira o codigo." });
+    socket.end();
+    return;
+  }
+  if (room.players.size >= ROOM_CAPACITY) {
+    wsSend(socket, { type: "error", message: "Sala cheia: limite de 4x4 atingido." });
+    socket.end();
+    return;
+  }
+
+  const team = assignTeam(room);
   if (!team) {
     wsSend(socket, { type: "error", message: "Sala cheia: limite de 4x4 atingido." });
     socket.end();
@@ -407,12 +516,14 @@ function handleJoin(socket, data) {
   };
 
   socket.playerId = id;
-  players.set(id, player);
-  spawnPlayer(player);
+  socket.roomCode = room.code;
+  room.sockets.add(socket);
+  room.players.set(id, player);
+  spawnPlayer(room, player);
 
-  if (teamsReady() && matchState === "waiting") {
-    matchState = "live";
-    broadcastRound("Partida 4x4 liberada", "Times CT e TR prontos para combate.");
+  if (teamsReady(room) && room.matchState === "waiting") {
+    room.matchState = "live";
+    broadcastRound(room, "Partida 4x4 liberada", "Times CT e TR prontos para combate.");
   }
 
   wsSend(socket, {
@@ -420,17 +531,23 @@ function handleJoin(socket, data) {
     id,
     team,
     spawn: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
-    scores,
-    round
+    scores: room.scores,
+    round: room.round,
+    room: roomSummary(room)
   });
 
-  broadcastRound(player.name + " entrou", team + " agora tem " + teamCount(team) + "/4 jogadores.");
-  broadcastState();
+  broadcastRound(room, player.name + " entrou", "Sala " + room.code + " · " + team + " agora tem " + teamCount(room, team) + "/4 jogadores.");
+  broadcastState(room);
+}
+
+function roomFromSocket(socket) {
+  return socket.roomCode ? rooms.get(socket.roomCode) : null;
 }
 
 function handleState(socket, data) {
-  const player = players.get(socket.playerId);
-  if (!player || !player.alive || matchState === "resetting") return;
+  const room = roomFromSocket(socket);
+  const player = room?.players.get(socket.playerId);
+  if (!room || !player || !player.alive || room.matchState === "resetting") return;
 
   const next = {
     x: clamp(finiteNumber(data.x, player.x), -WORLD_W / 2 + PLAYER_RADIUS, WORLD_W / 2 - PLAYER_RADIUS),
@@ -449,8 +566,9 @@ function handleState(socket, data) {
 }
 
 function handleFire(socket, data) {
-  const player = players.get(socket.playerId);
-  if (!player || !player.alive || matchState !== "live") return;
+  const room = roomFromSocket(socket);
+  const player = room?.players.get(socket.playerId);
+  if (!room || !player || !player.alive || room.matchState !== "live") return;
   if (WEAPONS[data.weaponId]) player.weaponId = data.weaponId;
   player.yaw = finiteNumber(data.yaw, player.yaw);
   player.pitch = clamp(finiteNumber(data.pitch, player.pitch), -1.18, 1.08);
@@ -471,7 +589,7 @@ function handleFire(socket, data) {
     let hitDist = wallDist;
     let hitPlayer = null;
 
-    for (const target of players.values()) {
+    for (const target of room.players.values()) {
       if (!target.alive || target.team === player.team || target.id === player.id) continue;
       const center = { x: target.x, y: 1.15, z: target.z };
       const distance = raySphere(origin, dir, center, BOT_RADIUS);
@@ -505,9 +623,9 @@ function handleFire(socket, data) {
     });
   }
 
-  for (const event of shotEvents) broadcast(event);
-  checkRoundEnd();
-  broadcastState();
+  for (const event of shotEvents) broadcast(room, event);
+  checkRoundEnd(room);
+  broadcastState(room);
 }
 
 function handleSocketMessage(socket, message) {
@@ -543,9 +661,10 @@ function readFrames(socket, chunk) {
       return;
     }
 
+    let mask = null;
     if (masked) {
       if (socket.buffer.length < offset + 4) return;
-      var mask = socket.buffer.slice(offset, offset + 4);
+      mask = socket.buffer.slice(offset, offset + 4);
       offset += 4;
     }
 
@@ -553,7 +672,7 @@ function readFrames(socket, chunk) {
     let payload = socket.buffer.slice(offset, offset + length);
     socket.buffer = socket.buffer.slice(offset + length);
 
-    if (masked) {
+    if (masked && mask) {
       payload = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
     }
 
@@ -573,13 +692,23 @@ function readFrames(socket, chunk) {
 
 function removeSocket(socket) {
   sockets.delete(socket);
-  if (socket.playerId && players.has(socket.playerId)) {
-    const player = players.get(socket.playerId);
-    players.delete(socket.playerId);
-    broadcastRound(player.name + " saiu", player.team + " ficou com " + teamCount(player.team) + "/4 jogadores.");
-    if (!teamsReady()) matchState = "waiting";
-    broadcastState();
+  const room = roomFromSocket(socket);
+  if (!room) return;
+
+  room.sockets.delete(socket);
+  if (socket.playerId && room.players.has(socket.playerId)) {
+    const player = room.players.get(socket.playerId);
+    room.players.delete(socket.playerId);
+    if (room.players.size === 0) {
+      rooms.delete(room.code);
+    } else {
+      broadcastRound(room, player.name + " saiu", "Sala " + room.code + " ficou com " + room.players.size + "/" + ROOM_CAPACITY + " jogadores.");
+      if (!teamsReady(room)) room.matchState = "waiting";
+      broadcastState(room);
+    }
   }
+  socket.playerId = null;
+  socket.roomCode = null;
 }
 
 function handleUpgrade(req, socket) {
@@ -619,11 +748,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.url.startsWith("/health")) {
+    let playerCount = 0;
+    for (const room of rooms.values()) playerCount += room.players.size;
     send(res, 200, JSON.stringify({
       ok: true,
       game: "tatico-3d",
       multiplayer: true,
-      players: players.size
+      rooms: rooms.size,
+      players: playerCount
     }), "application/json; charset=utf-8");
     return;
   }
@@ -650,20 +782,27 @@ buildCollisionMap();
 setInterval(() => {
   const now = Date.now();
 
-  if (matchState === "resetting" && resetAt && now >= resetAt) {
-    resetRound();
-  } else if (!teamsReady()) {
-    for (const player of players.values()) {
-      if (!player.alive && player.respawnAt && now >= player.respawnAt) spawnPlayer(player);
+  for (const room of rooms.values()) {
+    if (room.players.size === 0) {
+      rooms.delete(room.code);
+      continue;
     }
-  }
 
-  broadcastState();
+    if (room.matchState === "resetting" && room.resetAt && now >= room.resetAt) {
+      resetRound(room);
+    } else if (!teamsReady(room)) {
+      for (const player of room.players.values()) {
+        if (!player.alive && player.respawnAt && now >= player.respawnAt) spawnPlayer(room, player);
+      }
+    }
+
+    broadcastState(room);
+  }
 }, TICK_MS);
 
 server.on("upgrade", handleUpgrade);
 
 server.listen(port, () => {
   console.log(`Tatico 3D rodando em http://localhost:${port}`);
-  console.log("Multiplayer 4x4 ativo em /multiplayer");
+  console.log("Multiplayer 4x4 com salas ativo em /multiplayer");
 });

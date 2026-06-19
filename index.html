@@ -31,6 +31,17 @@
     </div>
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
     <button id="buyButton" type="button">Comprar (B)</button>
+    <div id="touchControls" hidden>
+      <div id="touchMove" class="touch-stick" aria-label="Controle de movimento">
+        <span id="touchKnob"></span>
+      </div>
+      <div class="touch-actions">
+        <button id="touchWalk" type="button">Lento</button>
+        <button id="touchReload" type="button">Recarregar</button>
+        <button id="touchBuy" type="button">Comprar</button>
+        <button id="touchFire" class="touch-fire" type="button">Atirar</button>
+      </div>
+    </div>
     <div id="message"></div>
   </main>
 
@@ -65,12 +76,26 @@
               <small>Bots, loja e rodadas</small>
             </button>
             <button id="onlineButton" class="online-start" type="button">
-              <span>Multiplayer 4x4</span>
-              <small>CT contra TR em tempo real</small>
+              <span>Entrar em sala publica</span>
+              <small>Procura uma sala livre ou cria uma nova</small>
             </button>
           </div>
 
-          <p id="onlineHint">Para o 4x4 funcionar, abra o jogo pelo Render ou com <b>npm start</b>.</p>
+          <div class="room-builder">
+            <div class="room-row">
+              <button id="createRoomButton" type="button">Criar sala</button>
+              <label class="private-toggle">
+                <input id="privateRoom" type="checkbox">
+                <span>Privada</span>
+              </label>
+            </div>
+            <div class="room-row">
+              <input id="roomCode" maxlength="6" autocomplete="off" placeholder="CODIGO">
+              <button id="joinRoomButton" type="button">Entrar</button>
+            </div>
+          </div>
+
+          <p id="onlineHint">Salas publicas aparecem no pareamento. Salas privadas entram so por codigo. Para o 4x4 funcionar, abra pelo Render ou com <b>npm start</b>.</p>
         </div>
       </div>
     </div>
