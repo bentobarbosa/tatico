@@ -123,6 +123,18 @@ function roomSummary(room) {
   };
 }
 
+function roomListSummary(room) {
+  return {
+    code: room.code,
+    public: room.public,
+    players: room.players.size,
+    capacity: ROOM_CAPACITY,
+    round: room.round,
+    matchState: room.matchState,
+    slots: { CT: teamCount(room, "CT"), TR: teamCount(room, "TR") }
+  };
+}
+
 function createRoom(isPrivate = false) {
   const room = {
     code: makeRoomCode(),
@@ -450,6 +462,17 @@ function awardTeamMoney(room, winner) {
   }
 }
 
+function startWarmup(room, title = "Aquecimento online", sub = "Aguardando outro time entrar.") {
+  room.matchState = "waiting";
+  room.buyEndAt = 0;
+  room.resetAt = 0;
+  for (const player of room.players.values()) {
+    if (!player.alive) spawnPlayer(room, player);
+  }
+  broadcastRound(room, title, sub);
+  broadcastState(room);
+}
+
 function startBuyPhase(room, title = "Fase de compra", sub = "Compre arma e prepare a rodada.") {
   room.matchState = teamsReady(room) ? "buy" : "waiting";
   room.buyEndAt = room.matchState === "buy" ? Date.now() + BUY_TIME_MS : 0;
@@ -622,13 +645,14 @@ function handleBuy(socket, data) {
 function handleFire(socket, data) {
   const room = roomFromSocket(socket);
   const player = room?.players.get(socket.playerId);
-  if (!room || !player || !player.alive || room.matchState !== "live") return;
+  if (!room || !player || !player.alive || (room.matchState !== "live" && room.matchState !== "waiting")) return;
   if (WEAPONS[data.weaponId]) player.weaponId = data.weaponId;
   player.yaw = finiteNumber(data.yaw, player.yaw);
   player.pitch = clamp(finiteNumber(data.pitch, player.pitch), -1.18, 1.08);
 
   const w = WEAPONS[player.weaponId] || WEAPONS.rifle;
   const now = Date.now();
+  const damageEnabled = room.matchState === "live";
   if (now < player.fireUntil) return;
   player.fireUntil = now + w.fireMs;
 
@@ -653,7 +677,7 @@ function handleFire(socket, data) {
       }
     }
 
-    if (hitPlayer) {
+    if (hitPlayer && damageEnabled) {
       hitPlayer.hp = Math.max(0, hitPlayer.hp - w.damage);
       if (hitPlayer.hp <= 0 && hitPlayer.alive) {
         hitPlayer.alive = false;
@@ -679,7 +703,7 @@ function handleFire(socket, data) {
   }
 
   for (const event of shotEvents) broadcast(room, event);
-  checkRoundEnd(room);
+  if (damageEnabled) checkRoundEnd(room);
   broadcastState(room);
 }
 
@@ -759,7 +783,7 @@ function removeSocket(socket) {
       rooms.delete(room.code);
     } else {
       broadcastRound(room, player.name + " saiu", "Sala " + room.code + " ficou com " + room.players.size + "/" + ROOM_CAPACITY + " jogadores.");
-      if (!teamsReady(room)) room.matchState = "waiting";
+      if (!teamsReady(room)) startWarmup(room);
       broadcastState(room);
     }
   }
@@ -816,6 +840,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url.startsWith("/rooms")) {
+    const publicRooms = [...rooms.values()]
+      .filter(room => room.public && room.players.size < ROOM_CAPACITY)
+      .sort((a, b) => b.players.size - a.players.size || a.createdAt - b.createdAt)
+      .map(roomListSummary);
+    send(res, 200, JSON.stringify({
+      ok: true,
+      rooms: publicRooms
+    }), "application/json; charset=utf-8");
+    return;
+  }
+
   const filePath = resolvePublicFile(req.url);
   if (!filePath) {
     send(res, 403, "Caminho bloqueado");
@@ -853,8 +889,14 @@ setInterval(() => {
     if (room.matchState === "resetting" && room.resetAt && now >= room.resetAt) {
       resetRound(room);
     } else if (!teamsReady(room)) {
-      room.matchState = "waiting";
-      room.buyEndAt = 0;
+      if (room.matchState !== "waiting") {
+        startWarmup(room);
+      } else {
+        room.buyEndAt = 0;
+        for (const player of room.players.values()) {
+          if (!player.alive) spawnPlayer(room, player);
+        }
+      }
     }
 
     broadcastState(room);

@@ -125,6 +125,8 @@
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
   const crosshairStyles = ["pro", "yellow", "cyan"];
   let crosshairStyle = localStorage.getItem("taticoCrosshair") || "pro";
+  const timeModes = ["day", "night"];
+  let worldTime = localStorage.getItem("taticoTime") || "day";
   const touchInput = {
     used: false,
     moveId: null,
@@ -887,6 +889,57 @@
     });
   }
 
+  function setTimeMode(mode) {
+    worldTime = timeModes.includes(mode) ? mode : "day";
+    localStorage.setItem("taticoTime", worldTime);
+    const night = worldTime === "night";
+
+    scene.background.set(night ? 0x050912 : 0x171913);
+    scene.fog.color.set(night ? 0x050912 : 0x171913);
+    scene.fog.near = night ? 38 : 58;
+    scene.fog.far = night ? 138 : 176;
+    renderer.toneMappingExposure = night ? 0.92 : 1.14;
+
+    hemi.color.set(night ? 0x9bbdff : 0xdde8ff);
+    hemi.groundColor.set(night ? 0x171a24 : 0x3e4631);
+    hemi.intensity = night ? 0.98 : 1.78;
+    sun.color.set(night ? 0xb4c8ff : 0xfff1d4);
+    sun.position.set(night ? 24 : -38, night ? 34 : 56, night ? -44 : 24);
+    sun.intensity = night ? 0.58 : 2.22;
+    fill.color.set(night ? 0x3b6cff : 0x9fc4ff);
+    fill.intensity = night ? 0.72 : 0.42;
+    rim.color.set(night ? 0x74c7ff : 0xff7d5a);
+    rim.intensity = night ? 0.5 : 0.28;
+
+    document.body.dataset.time = worldTime;
+    document.querySelectorAll("[data-time]").forEach(button => {
+      button.classList.toggle("active", button.dataset.time === worldTime);
+    });
+  }
+
+  function toggleQuickSettings(open = el("quickSettings").hidden) {
+    const panel = el("quickSettings");
+    panel.hidden = !open;
+    if (open && document.pointerLockElement === renderer.domElement) document.exitPointerLock?.();
+    if (open) mouse.down = false;
+  }
+
+  function phaseFromMatchState(matchState) {
+    if (matchState === "buy") return "buy";
+    if (matchState === "live") return "live";
+    if (matchState === "resetting") return "round_end";
+    if (matchState === "waiting") return "warmup";
+    return "connecting";
+  }
+
+  function onlineStateLabel(matchState) {
+    if (matchState === "buy") return "Compra " + Math.ceil((net.buyRemainingMs || 0) / 1000) + "s";
+    if (matchState === "live") return "Combate";
+    if (matchState === "resetting") return "Fim do round";
+    if (matchState === "waiting") return "Aquecimento";
+    return "Conectando";
+  }
+
   function clearRemotePlayers() {
     for (const remote of remotePlayers.values()) {
       scene.remove(remote.mesh);
@@ -936,14 +989,51 @@
     return (el("roomCode").value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
   }
 
-  function startOnlineGame(roomMode = "quick") {
+  function renderPublicRooms(rooms = [], status = "") {
+    const list = el("publicRooms");
+    if (!list) return;
+    if (status) {
+      list.textContent = status;
+      return;
+    }
+    if (!rooms.length) {
+      list.textContent = "Nenhuma sala publica agora. Clique em Entrar em sala publica para criar uma.";
+      return;
+    }
+    list.innerHTML = rooms.map(room => {
+      const state = room.matchState === "live" ? "Combate" : room.matchState === "buy" ? "Compra" : room.matchState === "resetting" ? "Fim" : "Aquecimento";
+      const slots = (room.slots?.CT || 0) + " CT / " + (room.slots?.TR || 0) + " TR";
+      return "<button type=\"button\" data-join-room=\"" + room.code + "\">" +
+        "<strong>Sala " + room.code + "</strong>" +
+        "<span>" + room.players + "/" + room.capacity + "</span>" +
+        "<em>" + state + " · " + slots + "</em>" +
+        "</button>";
+    }).join("");
+  }
+
+  async function refreshPublicRooms() {
+    if (location.protocol !== "http:" && location.protocol !== "https:") {
+      renderPublicRooms([], "Abra pelo Render ou com npm start para listar salas.");
+      return;
+    }
+    try {
+      const response = await fetch("/rooms", { cache: "no-store" });
+      if (!response.ok) throw new Error("rooms unavailable");
+      const data = await response.json();
+      renderPublicRooms(data.rooms || []);
+    } catch {
+      renderPublicRooms([], "Servidor de salas nao respondeu. Use o Render Web Service ou rode npm start.");
+    }
+  }
+
+  function startOnlineGame(roomMode = "quick", forcedRoomCode = "") {
     const url = onlineSocketUrl();
     if (!url) {
       setMessage("Abra pelo servidor", "Use o Render ou rode npm start.", 3600);
       return;
     }
 
-    const roomCode = cleanRoomCode();
+    const roomCode = (forcedRoomCode || cleanRoomCode()).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
     if (roomMode === "join" && roomCode.length < 4) {
       setMessage("Codigo da sala", "Digite o codigo que seu amigo recebeu.", 2600);
       return;
@@ -1020,7 +1110,7 @@
       net.matchState = data.matchState || "waiting";
       net.buyRemainingMs = data.buyRemainingMs || 0;
       net.joined = true;
-      phase = net.matchState === "buy" ? "buy" : net.matchState === "live" ? "live" : "connecting";
+      phase = phaseFromMatchState(net.matchState);
       player.alive = true;
       player.hp = 100;
       player.position.set(data.spawn.x, data.spawn.y || PLAYER_HEIGHT, data.spawn.z);
@@ -1031,7 +1121,8 @@
       ctScore = data.scores?.CT || 0;
       trScore = data.scores?.TR || 0;
       const roomText = net.room?.code ? "Sala " + net.room.code : "Sala online";
-      setMessage("Voce entrou no " + data.team, roomText + " · clique no jogo para mirar.", 3000);
+      const joinHint = phase === "warmup" ? "Aquecimento ate entrar outro time." : "Clique no jogo para mirar.";
+      setMessage("Voce entrou no " + data.team, roomText + " · " + joinHint, 3000);
       el("onlinePanel").hidden = false;
       updateOnlinePanel();
       if (phase === "buy") showBuy(true);
@@ -1051,10 +1142,7 @@
       trScore = net.scores.TR || 0;
 
       if (net.mode === "online") {
-        if (net.matchState === "buy") phase = "buy";
-        else if (net.matchState === "live") phase = "live";
-        else if (net.matchState === "resetting") phase = "round_end";
-        else phase = "connecting";
+        phase = phaseFromMatchState(net.matchState);
 
         if (phase === "buy" && previousPhase !== "buy") {
           showBuy(true);
@@ -1063,6 +1151,10 @@
         if (phase === "live" && previousPhase === "buy") {
           showBuy(false);
           setMessage("Combate liberado", "Sem respawn ate o fim do round.", 1700);
+        }
+        if (phase === "warmup" && previousPhase !== "warmup") {
+          showBuy(false);
+          setMessage("Aquecimento online", "Espere jogadores entrarem ou chame seu amigo pelo codigo.", 2600);
         }
       }
 
@@ -1165,7 +1257,7 @@
     el("onlinePanel").hidden = false;
     const code = net.room?.code || "----";
     const privacy = net.room?.public === false ? "Privada" : "Publica";
-    const stateLabel = net.matchState === "buy" ? "Compra " + Math.ceil((net.buyRemainingMs || 0) / 1000) + "s" : net.matchState === "live" ? "Combate" : net.matchState === "resetting" ? "Fim do round" : "Aguardando";
+    const stateLabel = onlineStateLabel(net.matchState);
     el("onlineTitle").textContent = "Sala " + code + " · " + privacy;
     el("onlineTeam").textContent = stateLabel + " · " + (net.team ? "Time " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
 
@@ -1269,7 +1361,7 @@
 
   function canControlPlayer() {
     if (!player.alive) return false;
-    if (phase === "live") return true;
+    if (phase === "live" || phase === "warmup") return true;
     return net.mode === "online" && phase === "buy" && !buyMenuOpen();
   }
 
@@ -1418,7 +1510,8 @@
   }
 
   function shoot() {
-    if (phase !== "live" || !player.alive) return;
+    if (!player.alive) return;
+    if (phase !== "live" && !(net.mode === "online" && phase === "warmup")) return;
     if (net.mode === "online") {
       shootOnline();
       return;
@@ -1605,7 +1698,7 @@
   }
 
   function updateOnlineNetwork() {
-    if (net.mode !== "online" || !net.joined || (phase !== "live" && phase !== "buy")) return;
+    if (net.mode !== "online" || !net.joined || (phase !== "live" && phase !== "buy" && phase !== "warmup")) return;
     const now = performance.now();
     if (now - net.lastSend < ONLINE_SEND_MS) return;
     net.lastSend = now;
@@ -1728,7 +1821,7 @@
     camera.rotation.y = player.yaw;
     camera.rotation.x = player.pitch;
     const moving = keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD;
-    const bob = moving && phase === "live" ? Math.sin(performance.now() * 0.01) : 0;
+    const bob = moving && canControlPlayer() ? Math.sin(performance.now() * 0.01) : 0;
     viewModel.rotation.z = bob * 0.012;
     viewModel.rotation.x = -0.05 + Math.abs(bob) * 0.012;
   }
@@ -1824,7 +1917,7 @@
 
   function loop() {
     const dt = Math.min(clock.getDelta(), 0.05);
-    if (phase === "live" || phase === "round_end" || (net.mode === "online" && phase === "buy")) {
+    if (phase === "live" || phase === "warmup" || phase === "round_end" || (net.mode === "online" && phase === "buy")) {
       updatePlayer(dt);
       if (net.mode === "online") {
         updateOnlineNetwork();
@@ -1833,7 +1926,7 @@
         updateRound(dt);
       }
     }
-    if (phase === "live" && (mouse.down || touchInput.firing)) shoot();
+    if ((phase === "live" || (net.mode === "online" && phase === "warmup")) && (mouse.down || touchInput.firing)) shoot();
     updateTracers(dt);
     updateParticles(dt);
     updateViewEffects();
@@ -1861,12 +1954,15 @@
         tryJump();
       }
       if (event.code === "KeyR") reload();
+      if (event.code === "KeyC") toggleQuickSettings();
+      if (event.code === "KeyN") setTimeMode(worldTime === "night" ? "day" : "night");
       if (event.code === "KeyB" && phase === "buy") showBuy(true);
       if (event.code === "Escape") {
         mouse.freeLook = false;
         mouse.down = false;
         mouse.lookHeld = false;
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock?.();
+        toggleQuickSettings(false);
         if (phase === "buy") showBuy(true);
       }
     });
@@ -1957,9 +2053,20 @@
     });
     el("manualOn").addEventListener("click", () => setManual(true));
     el("manualOff").addEventListener("click", () => setManual(false));
-    el("crosshairOptions").addEventListener("click", event => {
+    document.addEventListener("click", event => {
       const option = event.target.closest("[data-crosshair]");
       if (option) setCrosshairStyle(option.dataset.crosshair);
+      const timeOption = event.target.closest("[data-time]");
+      if (timeOption) setTimeMode(timeOption.dataset.time);
+    });
+    el("settingsButton").addEventListener("click", () => toggleQuickSettings());
+    el("closeSettings").addEventListener("click", () => toggleQuickSettings(false));
+    el("refreshRooms").addEventListener("click", refreshPublicRooms);
+    el("publicRooms").addEventListener("click", event => {
+      const roomButton = event.target.closest("[data-join-room]");
+      if (!roomButton) return;
+      el("roomCode").value = roomButton.dataset.joinRoom || "";
+      startOnlineGame("join", roomButton.dataset.joinRoom || "");
     });
     el("playRound").addEventListener("click", startRound);
     el("closeBuy").addEventListener("click", () => {
@@ -2052,6 +2159,11 @@
     el("playerName").value = localStorage.getItem("taticoName") || "";
     updateManualUi();
     setCrosshairStyle(crosshairStyle);
+    setTimeMode(worldTime);
+    refreshPublicRooms();
+    window.setInterval(() => {
+      if (!el("startScreen").classList.contains("hidden")) refreshPublicRooms();
+    }, 4500);
     resetPlayer();
     updateHud();
     el("loading").style.display = "none";

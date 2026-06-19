@@ -13,6 +13,8 @@ Jogar: https://bentobarbosa.github.io/tatico/
 - Espaço: pular e subir em caixas/muretas baixas
 - R: recarregar
 - B: comprar, durante a fase de compra
+- C: abrir opcoes de mira e ambiente
+- N: alternar entre dia e noite
 - Shift: andar devagar
 - Celular/iPad: joystick esquerdo move, arrastar na tela mira, botao Atirar dispara
 
@@ -26,10 +28,13 @@ Jogar: https://bentobarbosa.github.io/tatico/
 - Mais elementos no mapa: casas, oficinas, mercados, veículos, muretas e coberturas extras com colisão
 - Pulo com gravidade e plataformas escaláveis em caixas, carros e muretas
 - Mira central em X com feedback de tiro e acerto
+- Miras estilo CS2 com opcoes verde, amarela e ciano, salvando a escolha do jogador
+- Ambiente com modo dia e modo noite
 - Personagens TR com corpo 3D: tronco em `CapsuleGeometry`, cabeça, capacete, visor, colete, braços, mãos, pernas, botas e arma
 - Modelo em primeira pessoa com braços e arma visível
 - Sistema de rodadas CT vs TR
 - Multiplayer online 4x4 com WebSocket, salas públicas/privadas, código de sala, times CT/TR, limite de 8 jogadores, placar, vida, tiros, dano e reset de rodada
+- Lista de salas públicas na tela inicial e aquecimento jogavel enquanto espera outro jogador
 - Modo online por eliminação: morreu, espera o round acabar; vitória/derrota pagam dinheiro diferente para compra de armas
 - Controles touch para celular/iPad: joystick de movimento, mirar arrastando na tela, atirar, recarregar, comprar e andar devagar
 - Bots com IA simples: procuram o jogador, usam linha de visão, avançam, recuam e atiram
@@ -125,5 +130,8 @@ Existem tres jeitos de entrar:
 - **Entrar em sala publica**: procura uma sala publica com vaga ou cria uma automaticamente
 - **Criar sala**: cria uma sala nova e mostra o codigo dela no painel online
 - **Entrar por codigo**: entra direto em uma sala especifica, inclusive privada
+- **Lista de salas publicas**: mostra salas abertas, quantidade de jogadores e permite entrar com um clique
 
 O servidor decide tiros, dano, vida, mortes, placar e reset de rodada. A movimentacao fica rapida no cliente e e sincronizada para os outros jogadores.
+
+Quando uma sala ainda nao tem jogadores nos dois times, ela fica em aquecimento. Nesse modo da para andar, mirar, testar tiros e chamar outra pessoa pelo codigo da sala; quando os dois times existem, o servidor abre a fase de compra e depois o combate real.

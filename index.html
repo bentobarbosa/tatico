@@ -32,7 +32,25 @@
     <div id="crosshair" class="crosshair-pro" aria-label="Mira">
       <span></span><span></span><span></span><span></span><i></i>
     </div>
+    <button id="settingsButton" type="button">Opções (C)</button>
     <button id="buyButton" type="button">Comprar (B)</button>
+    <div id="quickSettings" class="quick-settings" hidden>
+      <div class="quick-head">
+        <strong>Jogo</strong>
+        <button id="closeSettings" type="button" aria-label="Fechar opções">×</button>
+      </div>
+      <span>Mira</span>
+      <div class="crosshair-options compact-options">
+        <button class="crosshair-option crosshair-preview-pro" type="button" data-crosshair="pro" aria-label="Mira verde com aro"></button>
+        <button class="crosshair-option crosshair-preview-yellow" type="button" data-crosshair="yellow" aria-label="Mira amarela"></button>
+        <button class="crosshair-option crosshair-preview-cyan" type="button" data-crosshair="cyan" aria-label="Mira ciano"></button>
+      </div>
+      <span>Ambiente</span>
+      <div class="time-options">
+        <button type="button" data-time="day">Dia</button>
+        <button type="button" data-time="night">Noite</button>
+      </div>
+    </div>
     <div id="touchControls" hidden>
       <div id="touchMove" class="touch-stick" aria-label="Controle de movimento">
         <span id="touchKnob"></span>
@@ -83,6 +101,14 @@
             </div>
           </div>
 
+          <div class="time-picker">
+            <span>Ambiente</span>
+            <div class="time-options">
+              <button type="button" data-time="day">Dia</button>
+              <button type="button" data-time="night">Noite</button>
+            </div>
+          </div>
+
           <div class="start-actions">
             <button id="startButton" class="primary" type="button">
               <span>Treino offline</span>
@@ -106,6 +132,14 @@
               <input id="roomCode" maxlength="6" autocomplete="off" placeholder="CODIGO">
               <button id="joinRoomButton" type="button">Entrar</button>
             </div>
+          </div>
+
+          <div class="public-rooms">
+            <div class="room-list-head">
+              <span>Salas públicas</span>
+              <button id="refreshRooms" type="button">Atualizar</button>
+            </div>
+            <div id="publicRooms" class="room-list">Carregando salas...</div>
           </div>
 
           <p id="onlineHint">Salas publicas aparecem no pareamento. Salas privadas entram so por codigo. Para o 4x4 funcionar, abra pelo Render ou com <b>npm start</b>.</p>
