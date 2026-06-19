@@ -2294,7 +2294,7 @@
       if (event.code === "Digit5") switchWeapon("sniper");
       if (event.code === "KeyV") useHpKit();
       if (event.code === "KeyB" && phase === "live") useArmorKit();
-      if (event.code === "KeyB" && phase === "buy") showBuy(true);
+      if (event.code === "KeyL") showBuy(true);
       if (event.code === "Enter" && !chatOpen && canControlPlayer()) {
         openChat();
         event.preventDefault();
