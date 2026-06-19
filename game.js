@@ -22,17 +22,17 @@
   const ONLINE_SEND_MS = 55;
 
   const WEAPONS = {
-    pistol: { name: "Pistola", price: 0, damage: 28, mag: 12, fireMs: 260, reloadMs: 1200, spread: 0, pellets: 1, range: 70 },
-    smg: { name: "SMG", price: 1000, damage: 18, mag: 30, fireMs: 88, reloadMs: 1700, spread: 0, pellets: 1, range: 60 },
-    shotgun: { name: "Escopeta", price: 1300, damage: 13, mag: 8, fireMs: 720, reloadMs: 2400, spread: 0.12, pellets: 8, range: 38 },
-    rifle: { name: "Fuzil", price: 2500, damage: 34, mag: 30, fireMs: 120, reloadMs: 2200, spread: 0, pellets: 1, range: 85 },
-    sniper: { name: "Sniper", price: 4200, damage: 120, mag: 5, fireMs: 1350, reloadMs: 2800, spread: 0, pellets: 1, range: 115 }
+    pistol:  { name: "Glock-18",    price: 0,    damage: 28,  mag: 15, fireMs: 240,  reloadMs: 1200, spread: 0,    pellets: 1, range: 70  },
+    smg:     { name: "MP5",         price: 1000, damage: 18,  mag: 30, fireMs: 82,   reloadMs: 1700, spread: 0,    pellets: 1, range: 60  },
+    shotgun: { name: "SPAS-12",     price: 1300, damage: 14,  mag: 8,  fireMs: 700,  reloadMs: 2400, spread: 0.12, pellets: 8, range: 38  },
+    rifle:   { name: "AK-47",       price: 2500, damage: 34,  mag: 30, fireMs: 110,  reloadMs: 2200, spread: 0,    pellets: 1, range: 85  },
+    sniper:  { name: "Barrett M82", price: 4200, damage: 120, mag: 5,  fireMs: 1350, reloadMs: 2800, spread: 0,    pellets: 1, range: 115 }
   };
   const WEAPON_ORDER = ["pistol", "smg", "shotgun", "rifle", "sniper"];
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x171913);
-  scene.fog = new THREE.Fog(0x171913, 58, 176);
+  scene.background = new THREE.Color(0x6aa8d4);
+  scene.fog = new THREE.Fog(0x8ec4e8, 55, 165);
 
   const camera = new THREE.PerspectiveCamera(73, window.innerWidth / window.innerHeight, 0.05, 220);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -50,9 +50,9 @@
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
 
-  const hemi = new THREE.HemisphereLight(0xdde8ff, 0x3e4631, 1.78);
+  const hemi = new THREE.HemisphereLight(0xc9e8ff, 0x5a6e3e, 2.1);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1d4, 2.22);
+  const sun = new THREE.DirectionalLight(0xffe8b0, 2.8);
   sun.position.set(-38, 56, 24);
   sun.castShadow = true;
   sun.shadow.camera.left = -100;
@@ -87,8 +87,9 @@
   const ITEMS = {
     hpkit:    { name: "Kit de Vida",   price: 400, desc: "Restaura 50 HP · tecla V" },
     armorkit: { name: "Kit de Escudo", price: 650, desc: "100 de escudo · tecla B" },
+    ammo:     { name: "Munição",       price: 200, desc: "Reabastece o pente atual" },
   };
-  const ITEM_ORDER = ["hpkit", "armorkit"];
+  const ITEM_ORDER = ["hpkit", "armorkit", "ammo"];
 
   const player = {
     position: new THREE.Vector3(0, PLAYER_HEIGHT, 50),
@@ -742,13 +743,18 @@
     return group;
   }
 
-  function createBotMesh(colorMat) {
+  const BOT_SKINS = [0xd4a07a, 0xc08850, 0xf0c8a0, 0x8a6040, 0x6b4530, 0xe8b890];
+
+  function createBotMesh(colorMat, skinHex) {
     const group = new THREE.Group();
 
     const uniform = colorMat;
-    const skin = makeMat(0xc99b72, 0.72);
+    const skin = makeMat(skinHex ?? 0xc99b72, 0.68);
     const boot = makeMat(0x171915, 0.78);
     const gear = makeMat(0x242822, 0.7);
+    const darkSkin = makeMat(skinHex ? skinHex * 0.7 : 0x8a6845, 0.7);
+    const eyeWhite = makeMat(0xf0ece0, 0.5);
+    const eyePupil = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3 });
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.43, 0.74, 8, 14), uniform);
     torso.position.y = 1.18;
@@ -796,10 +802,40 @@
     neck.castShadow = true;
     group.add(neck);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 18, 14), skin);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 20, 16), skin);
     head.position.y = 1.98;
     head.castShadow = true;
     group.add(head);
+
+    // jaw / chin
+    const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 10), skin);
+    jaw.scale.set(0.9, 0.72, 0.88);
+    jaw.position.set(0, 1.73, -0.06);
+    group.add(jaw);
+
+    // eyes — white + pupil
+    [-1, 1].forEach(side => {
+      const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), eyeWhite);
+      eyeW.position.set(side * 0.12, 1.99, -0.28);
+      group.add(eyeW);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), eyePupil);
+      pupil.position.set(side * 0.12, 1.99, -0.31);
+      group.add(pupil);
+      // brow
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.022, 0.018), darkSkin);
+      brow.position.set(side * 0.12, 2.055, -0.295);
+      group.add(brow);
+    });
+
+    // nose
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.06), skin);
+    nose.position.set(0, 1.95, -0.31);
+    group.add(nose);
+
+    // mouth line
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.018, 0.018), darkSkin);
+    mouth.position.set(0, 1.89, -0.298);
+    group.add(mouth);
 
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 18, 8, 0, Math.PI * 2, 0, Math.PI * 0.56), gear);
     helmet.position.y = 2.04;
@@ -809,6 +845,13 @@
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.05), mats.glass);
     visor.position.set(0, 1.98, -0.29);
     group.add(visor);
+
+    // ear flaps on helmet
+    [-1, 1].forEach(side => {
+      const earFlap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.22), gear);
+      earFlap.position.set(side * 0.33, 1.96, 0.04);
+      group.add(earFlap);
+    });
 
     const gun = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.95), mats.black);
     gun.position.set(0.08, 1.18, -0.83);
@@ -860,7 +903,7 @@
         weaponId: round > 4 ? "rifle" : "smg",
         strafe: i % 2 ? 1 : -1,
         think: rand(0, 1),
-        mesh: createBotMesh(mats.tr)
+        mesh: createBotMesh(mats.tr, BOT_SKINS[i % BOT_SKINS.length])
       };
       bot.mesh.position.copy(bot.position);
       scene.add(bot.mesh);
@@ -910,22 +953,22 @@
     localStorage.setItem("taticoTime", worldTime);
     const night = worldTime === "night";
 
-    scene.background.set(night ? 0x050912 : 0x171913);
-    scene.fog.color.set(night ? 0x050912 : 0x171913);
-    scene.fog.near = night ? 38 : 58;
-    scene.fog.far = night ? 138 : 176;
-    renderer.toneMappingExposure = night ? 0.92 : 1.14;
+    scene.background.set(night ? 0x050912 : 0x6aa8d4);
+    scene.fog.color.set(night ? 0x050912 : 0x8ec4e8);
+    scene.fog.near = night ? 38 : 55;
+    scene.fog.far = night ? 138 : 165;
+    renderer.toneMappingExposure = night ? 0.92 : 1.22;
 
-    hemi.color.set(night ? 0x9bbdff : 0xdde8ff);
-    hemi.groundColor.set(night ? 0x171a24 : 0x3e4631);
-    hemi.intensity = night ? 0.98 : 1.78;
-    sun.color.set(night ? 0xb4c8ff : 0xfff1d4);
+    hemi.color.set(night ? 0x9bbdff : 0xc9e8ff);
+    hemi.groundColor.set(night ? 0x171a24 : 0x5a6e3e);
+    hemi.intensity = night ? 0.98 : 2.1;
+    sun.color.set(night ? 0xb4c8ff : 0xffe8b0);
     sun.position.set(night ? 24 : -38, night ? 34 : 56, night ? -44 : 24);
-    sun.intensity = night ? 0.58 : 2.22;
+    sun.intensity = night ? 0.58 : 2.8;
     fill.color.set(night ? 0x3b6cff : 0x9fc4ff);
-    fill.intensity = night ? 0.72 : 0.42;
-    rim.color.set(night ? 0x74c7ff : 0xff7d5a);
-    rim.intensity = night ? 0.5 : 0.28;
+    fill.intensity = night ? 0.72 : 0.5;
+    rim.color.set(night ? 0x74c7ff : 0xff9060);
+    rim.intensity = night ? 0.5 : 0.38;
 
     document.body.dataset.time = worldTime;
     document.querySelectorAll("[data-time]").forEach(button => {
@@ -1446,7 +1489,17 @@
     player.money -= item.price;
     if (id === "hpkit") player.hpKits++;
     else if (id === "armorkit") player.armorKits++;
+    else if (id === "ammo") { player.ammo = weapon().mag; }
     renderBuy();
+    updateHud();
+  }
+
+  function switchWeapon(id) {
+    if (!player.owned.has(id) || id === player.weaponId) return;
+    player.weaponId = id;
+    player.reloading = false;
+    player.fireCooldown = 0;
+    updateViewModel();
     updateHud();
   }
 
@@ -2234,6 +2287,11 @@
       if (event.code === "KeyR") reload();
       if (event.code === "KeyC") toggleQuickSettings();
       if (event.code === "KeyN") setTimeMode(worldTime === "night" ? "day" : "night");
+      if (event.code === "Digit1") switchWeapon("pistol");
+      if (event.code === "Digit2") switchWeapon("smg");
+      if (event.code === "Digit3") switchWeapon("shotgun");
+      if (event.code === "Digit4") switchWeapon("rifle");
+      if (event.code === "Digit5") switchWeapon("sniper");
       if (event.code === "KeyV") useHpKit();
       if (event.code === "KeyB" && phase === "live") useArmorKit();
       if (event.code === "KeyB" && phase === "buy") showBuy(true);
