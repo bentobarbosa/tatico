@@ -27,8 +27,8 @@
   const WEAPON_ORDER = ["pistol", "smg", "shotgun", "rifle", "sniper"];
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1d2118);
-  scene.fog = new THREE.Fog(0x1d2118, 70, 170);
+  scene.background = new THREE.Color(0x171913);
+  scene.fog = new THREE.Fog(0x171913, 58, 176);
 
   const camera = new THREE.PerspectiveCamera(73, window.innerWidth / window.innerHeight, 0.05, 220);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -37,7 +37,7 @@
   if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
   else renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.08;
+  renderer.toneMappingExposure = 1.14;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.id = "gameCanvas";
@@ -46,10 +46,10 @@
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
 
-  const hemi = new THREE.HemisphereLight(0xdde8ff, 0x394326, 1.7);
+  const hemi = new THREE.HemisphereLight(0xdde8ff, 0x3e4631, 1.78);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0ce, 2.05);
-  sun.position.set(-34, 52, 26);
+  const sun = new THREE.DirectionalLight(0xfff1d4, 2.22);
+  sun.position.set(-38, 56, 24);
   sun.castShadow = true;
   sun.shadow.camera.left = -100;
   sun.shadow.camera.right = 100;
@@ -60,6 +60,9 @@
   const fill = new THREE.DirectionalLight(0x9fc4ff, 0.42);
   fill.position.set(40, 18, -32);
   scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xff7d5a, 0.28);
+  rim.position.set(32, 12, 46);
+  scene.add(rim);
 
   const clock = new THREE.Clock();
   const keys = {};
@@ -131,29 +134,79 @@
     messageUntil = performance.now() + ms;
   }
 
-  function makeMat(color, roughness = 0.85) {
-    return new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.05 });
+  function pulseCrosshair(hit = false) {
+    const crosshair = el("crosshair");
+    crosshair.classList.add("firing");
+    if (hit) crosshair.classList.add("hit");
+    window.setTimeout(() => crosshair.classList.remove("firing"), 95);
+    if (hit) window.setTimeout(() => crosshair.classList.remove("hit"), 170);
+  }
+
+  function makeMat(color, roughness = 0.85, options = {}) {
+    return new THREE.MeshStandardMaterial({
+      color,
+      roughness,
+      metalness: options.metalness ?? 0.05,
+      map: options.map || null,
+      emissive: options.emissive || 0x000000,
+      emissiveIntensity: options.emissiveIntensity || 0
+    });
+  }
+
+  function makeNoiseTexture(colors, repeatX = 1, repeatY = 1, size = 128) {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = colors[0];
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < size * 5; i++) {
+      ctx.fillStyle = colors[1 + Math.floor(Math.random() * (colors.length - 1))];
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const w = 1 + Math.random() * 3;
+      ctx.globalAlpha = 0.12 + Math.random() * 0.28;
+      ctx.fillRect(x, y, w, w);
+    }
+    ctx.globalAlpha = 1;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(repeatX, repeatY);
+    if ("colorSpace" in texture) texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
+  function makeTexturedMat(color, roughness, colors, repeatX, repeatY, options = {}) {
+    return makeMat(color, roughness, { ...options, map: makeNoiseTexture(colors, repeatX, repeatY) });
+  }
+
+  function makeGlowMat(color, intensity = 1.4) {
+    return new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
   }
 
   const mats = {
-    floor: makeMat(0x4b5a39),
-    wall: makeMat(0x8c8a7e),
-    darkWall: makeMat(0x55594f),
-    brick: makeMat(0x8e5f4b),
-    crate: makeMat(0x7b5a32),
-    metal: makeMat(0x58606a, 0.55),
-    site: makeMat(0xd6a23a),
+    floor: makeTexturedMat(0x4b5a39, 0.9, ["#4b5a39", "#3c472f", "#66734d", "#2f3828"], 18, 14),
+    wall: makeTexturedMat(0x8c8a7e, 0.86, ["#8c8a7e", "#737064", "#aaa28f", "#5e6257"], 4, 5),
+    darkWall: makeTexturedMat(0x55594f, 0.88, ["#55594f", "#444940", "#6e7064", "#343a34"], 5, 5),
+    brick: makeTexturedMat(0x8e5f4b, 0.88, ["#8e5f4b", "#6f4639", "#ad7661", "#49352d"], 6, 3),
+    crate: makeTexturedMat(0x7b5a32, 0.78, ["#7b5a32", "#5f421f", "#9b7441", "#3f2d19"], 2, 2),
+    metal: makeTexturedMat(0x58606a, 0.54, ["#58606a", "#3f4852", "#77818a", "#2c333a"], 3, 3, { metalness: 0.22 }),
+    site: makeMat(0xd6a23a, 0.62),
     ct: makeMat(0x3f83c4),
     tr: makeMat(0xc49a42),
     black: makeMat(0x141414, 0.7),
-    asphalt: makeMat(0x2f332d, 0.88),
-    containerBlue: makeMat(0x315e7e, 0.68),
-    containerRed: makeMat(0x85483c, 0.68),
+    asphalt: makeTexturedMat(0x2f332d, 0.92, ["#2f332d", "#20241f", "#484c43", "#141714"], 14, 2),
+    containerBlue: makeTexturedMat(0x315e7e, 0.68, ["#315e7e", "#24465f", "#477996", "#1e3446"], 4, 2, { metalness: 0.18 }),
+    containerRed: makeTexturedMat(0x85483c, 0.68, ["#85483c", "#65352e", "#a86251", "#482a25"], 4, 2, { metalness: 0.15 }),
     barrel: makeMat(0x365b4a, 0.58),
     house: makeMat(0x9b8b72, 0.82),
     houseDark: makeMat(0x6f705e, 0.86),
     roof: makeMat(0x564337, 0.78),
     windowLit: makeMat(0xd9c06a, 0.35),
+    accentBlue: makeGlowMat(0x74c7ff),
+    accentRed: makeGlowMat(0xff6d5d),
+    accentGold: makeGlowMat(0xffd76d),
     glass: new THREE.MeshStandardMaterial({ color: 0x8dc3d6, roughness: 0.22, metalness: 0.05, transparent: true, opacity: 0.42 })
   };
 
@@ -193,9 +246,25 @@
     barrel.position.set(0.02, 0.04, -0.98);
     group.add(barrel);
 
+    const flash = new THREE.Mesh(
+      new THREE.ConeGeometry(0.1, 0.52, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffd16b, transparent: true, opacity: 0.9 })
+    );
+    flash.rotation.x = -Math.PI / 2;
+    flash.position.set(0.02, 0.04, -1.18);
+    flash.visible = false;
+    group.add(flash);
+
+    const flashLight = new THREE.PointLight(0xffb347, 0, 3.2);
+    flashLight.position.set(0.02, 0.04, -1.04);
+    group.add(flashLight);
+
     group.userData.gun = gun;
     group.userData.top = top;
     group.userData.barrel = barrel;
+    group.userData.flash = flash;
+    group.userData.flashLight = flashLight;
+    group.userData.flashUntil = 0;
     return group;
   }
 
@@ -206,6 +275,24 @@
     viewModel.userData.gun.scale.set(longGun ? 0.86 : 1, longGun ? 0.92 : 1, longGun ? 1.55 : 1);
     viewModel.userData.top.scale.set(longGun ? 0.86 : 1, 1, longGun ? 1.45 : 1);
     viewModel.userData.barrel.position.z = longGun ? -1.28 : -0.98;
+    viewModel.userData.flash.position.z = longGun ? -1.5 : -1.18;
+  }
+
+  function triggerMuzzleFlash() {
+    const flash = viewModel.userData.flash;
+    flash.visible = true;
+    flash.rotation.z = Math.random() * Math.PI;
+    const scale = 0.82 + Math.random() * 0.58;
+    flash.scale.set(scale, scale, scale);
+    viewModel.userData.flashLight.intensity = 1.6 + Math.random() * 1.4;
+    viewModel.userData.flashUntil = performance.now() + 42;
+  }
+
+  function updateViewEffects() {
+    if (viewModel.userData.flashUntil && performance.now() > viewModel.userData.flashUntil) {
+      viewModel.userData.flash.visible = false;
+      viewModel.userData.flashLight.intensity = 0;
+    }
   }
 
   function addBox(x, z, w, d, h, mat, label = "parede") {
@@ -215,7 +302,64 @@
     mesh.receiveShadow = true;
     scene.add(mesh);
     walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h, mesh, label });
+    decorateWall(mesh, w, d, h, label);
     return mesh;
+  }
+
+  function decorateWall(mesh, w, d, h, label) {
+    if (h < 2.5 || label === "caixa" || label === "barril" || label === "veiculo") return;
+    const group = new THREE.Group();
+    const frontBack = w >= d;
+    const length = frontBack ? w : d;
+    const depth = frontBack ? d : w;
+    const faceOffset = depth / 2 + 0.018;
+    const stripeMat = label.includes("A") ? mats.accentRed : label.includes("B") ? mats.accentBlue : mats.accentGold;
+    const grimeMat = new THREE.MeshBasicMaterial({ color: 0x141712, transparent: true, opacity: 0.22, depthWrite: false });
+    const trimMat = mats.metal;
+
+    for (const side of [-1, 1]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(length * 0.82, 0.13, 0.04), stripeMat);
+      stripe.position.y = h * 0.68;
+      if (frontBack) {
+        stripe.position.z = side * faceOffset;
+      } else {
+        stripe.rotation.y = Math.PI / 2;
+        stripe.position.x = side * faceOffset;
+      }
+      group.add(stripe);
+
+      const lowTrim = new THREE.Mesh(new THREE.BoxGeometry(length * 0.92, 0.16, 0.05), trimMat);
+      lowTrim.position.y = 0.52;
+      if (frontBack) {
+        lowTrim.position.z = side * faceOffset;
+      } else {
+        lowTrim.rotation.y = Math.PI / 2;
+        lowTrim.position.x = side * faceOffset;
+      }
+      group.add(lowTrim);
+
+      const panelCount = clamp(Math.floor(length / 7), 1, 8);
+      for (let i = 0; i < panelCount; i++) {
+        const t = panelCount === 1 ? 0 : i / (panelCount - 1);
+        const pos = -length * 0.38 + t * length * 0.76;
+        const stain = new THREE.Mesh(new THREE.BoxGeometry(0.45 + Math.random() * 0.55, h * (0.28 + Math.random() * 0.18), 0.035), grimeMat);
+        stain.position.y = h * (0.38 + Math.random() * 0.16);
+        if (frontBack) {
+          stain.position.x = pos;
+          stain.position.z = side * (faceOffset + 0.006);
+        } else {
+          stain.rotation.y = Math.PI / 2;
+          stain.position.z = pos;
+          stain.position.x = side * (faceOffset + 0.006);
+        }
+        group.add(stain);
+      }
+    }
+
+    group.position.copy(mesh.position);
+    group.rotation.copy(mesh.rotation);
+    scene.add(group);
+    mesh.userData.detail = group;
   }
 
   function addCrate(x, z, size = 3, h = 2.1) {
@@ -273,6 +417,91 @@
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe6a3 }));
     lamp.position.set(x, 4.5, z);
     scene.add(lamp);
+  }
+
+  function makeSignTexture(text, bg = "#1a1d17", fg = "#f5f2e8", accent = "#ff6d5d") {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 192;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = accent;
+    ctx.fillRect(0, 0, 18, canvas.height);
+    ctx.fillRect(0, canvas.height - 16, canvas.width, 16);
+    ctx.fillStyle = "rgba(255,255,255,0.09)";
+    for (let x = 52; x < canvas.width; x += 46) ctx.fillRect(x, 0, 1, canvas.height);
+    ctx.fillStyle = fg;
+    ctx.font = "900 72px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2 + 8, canvas.height / 2 - 3);
+    const texture = new THREE.CanvasTexture(canvas);
+    if ("colorSpace" in texture) texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
+  function addSign(x, z, y, text, rot = 0, accent = "#ff6d5d") {
+    const mat = new THREE.MeshBasicMaterial({ map: makeSignTexture(text, "#171913", "#f6f0df", accent), transparent: true });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 1.8), mat);
+    sign.position.set(x, y, z);
+    sign.rotation.y = rot;
+    scene.add(sign);
+    return sign;
+  }
+
+  function addGroundMark(x, z, w, d, color, rot = 0, opacity = 0.78) {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotation.z = rot;
+    mesh.position.set(x, 0.035, z);
+    scene.add(mesh);
+    return mesh;
+  }
+
+  function addNeonStrip(x, z, w, rot, mat, y = 3.7) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, 0.12), mat);
+    strip.position.set(x, y, z);
+    strip.rotation.y = rot;
+    scene.add(strip);
+    const light = new THREE.PointLight(mat.color || 0xffffff, 0.35, 12);
+    light.position.set(x, y + 0.25, z);
+    scene.add(light);
+    return strip;
+  }
+
+  function addRooftopKit(x, z, w = 5, d = 3, rot = 0) {
+    const group = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.35, d), mats.metal);
+    base.position.y = 0.18;
+    base.castShadow = true;
+    group.add(base);
+    const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.75, 16), mats.metal);
+    vent.position.set(w * 0.28, 0.76, -d * 0.2);
+    vent.castShadow = true;
+    group.add(vent);
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3, 8), mats.black);
+    antenna.position.set(-w * 0.28, 1.28, d * 0.22);
+    antenna.castShadow = true;
+    group.add(antenna);
+    group.position.set(x, 5.45, z);
+    group.rotation.y = rot;
+    scene.add(group);
+    return group;
+  }
+
+  function addCable(x1, z1, x2, z2, y = 5.3) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x1, y, z1),
+      new THREE.Vector3((x1 + x2) / 2, y - 0.55, (z1 + z2) / 2),
+      new THREE.Vector3(x2, y, z2)
+    ]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.85 }));
+    scene.add(line);
+    return line;
   }
 
   function addHouse(x, z, w, d, h, mat = mats.house, label = "casa") {
@@ -438,6 +667,34 @@
       addLightPost(x, -52);
       addLightPost(x, 52);
     });
+
+    addSign(-50.1, 0, 3.2, "B LINK", Math.PI / 2, "#74c7ff");
+    addSign(50.1, 1, 3.2, "A MAIN", -Math.PI / 2, "#ff6d5d");
+    addSign(0, -39.1, 3.15, "MID", 0, "#ffd76d");
+    addSign(42, 34.8, 1.7, "SITE A", Math.PI, "#ff6d5d");
+    addSign(-64, 28.9, 2.7, "MARKET", Math.PI, "#74c7ff");
+    addSign(64, -38.8, 2.7, "GARAGE", 0, "#ffd76d");
+
+    addGroundMark(42, 42, 20, 1.2, 0xff6d5d, 0, 0.38);
+    addGroundMark(42, 42, 1.2, 16, 0xff6d5d, 0, 0.38);
+    addGroundMark(-42, 27, 18, 1.0, 0x74c7ff, 0.18, 0.35);
+    addGroundMark(0, 0, 24, 0.8, 0xffd76d, 0, 0.32);
+    addGroundMark(0, 0, 0.8, 18, 0xffd76d, 0, 0.32);
+
+    addNeonStrip(-50, -4, 10, Math.PI / 2, mats.accentBlue, 5.55);
+    addNeonStrip(50, -2, 10, Math.PI / 2, mats.accentRed, 5.55);
+    addNeonStrip(18, 40, 14, 0, mats.accentGold, 4.5);
+    addNeonStrip(-18, -39, 14, 0, mats.accentGold, 4.5);
+
+    addRooftopKit(-68, 34, 4.7, 3.2, 0.2);
+    addRooftopKit(68, -44, 4.7, 3.4, -0.35);
+    addRooftopKit(-36, -26, 3.8, 2.8, 0.8);
+    addRooftopKit(36, 27, 3.8, 2.8, -0.8);
+
+    addCable(-60, 52, -30, 52, 5.2);
+    addCable(30, 52, 60, 52, 5.2);
+    addCable(-60, -52, -30, -52, 5.2);
+    addCable(30, -52, 60, -52, 5.2);
   }
 
   function makeSiteMarker() {
@@ -777,6 +1034,9 @@
     }
 
     if (data.type === "shot") {
+      if (data.shooterId === net.id && data.hitId) {
+        pulseCrosshair(true);
+      }
       if (data.shooterId !== net.id) {
         const color = data.team === "CT" ? 0x73b9ff : 0xf2b85b;
         createTracer(
@@ -1060,10 +1320,13 @@
 
     player.fireCooldown = now + w.fireMs;
     player.ammo--;
+    triggerMuzzleFlash();
+    pulseCrosshair();
 
     const origin = player.position.clone();
     origin.y = PLAYER_HEIGHT - 0.05;
     const baseDir = cameraDir();
+    let hitSomething = false;
     for (let i = 0; i < w.pellets; i++) {
       const dir = withSpread(baseDir, w.spread);
       const wallDist = firstWallDistance(origin, dir, w.range);
@@ -1079,9 +1342,13 @@
           hitBot = bot;
         }
       }
-      if (hitBot) damageBot(hitBot, w.damage);
+      if (hitBot) {
+        hitSomething = true;
+        damageBot(hitBot, w.damage);
+      }
       createTracer(origin, origin.clone().addScaledVector(dir, hitDist), hitBot ? 0x9cff6d : 0xffdf72);
     }
+    if (hitSomething) pulseCrosshair(true);
     if (player.ammo <= 0) reload();
     updateHud();
   }
@@ -1097,6 +1364,8 @@
 
     player.fireCooldown = now + w.fireMs;
     player.ammo--;
+    triggerMuzzleFlash();
+    pulseCrosshair();
 
     const origin = player.position.clone();
     origin.y = PLAYER_HEIGHT - 0.05;
@@ -1419,6 +1688,7 @@
     if (phase === "live" && (mouse.down || touchInput.firing)) shoot();
     updateTracers(dt);
     updateParticles(dt);
+    updateViewEffects();
     updateCamera();
     updateHud();
     updateTouchControls();

@@ -6,14 +6,38 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  --bg: #11130f;
+  --panel: rgba(12, 15, 13, 0.78);
+  --panel-strong: rgba(18, 21, 18, 0.92);
+  --line: rgba(245, 242, 232, 0.13);
+  --text: #f5f2e8;
+  --muted: rgba(245, 242, 232, 0.66);
+  --acid: #d7ff6e;
+  --ct: #74c7ff;
+  --tr: #ffbd68;
+  --danger: #ff6d5d;
+}
+
 html,
 body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #10110d;
-  color: #f5f2e8;
+  background: var(--bg);
+  color: var(--text);
   font-family: Inter, "Segoe UI", system-ui, Arial, sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.38), transparent 23%, transparent 77%, rgba(0, 0, 0, 0.36)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 18%, transparent 74%, rgba(0, 0, 0, 0.34));
+  pointer-events: none;
 }
 
 canvas {
@@ -35,8 +59,10 @@ canvas {
   z-index: 100;
   display: grid;
   place-items: center;
-  background: #10110d;
-  color: #d8f28a;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 44px),
+    #10110d;
+  color: var(--acid);
   font-size: 18px;
   font-weight: 900;
 }
@@ -61,16 +87,19 @@ canvas {
 
 .hud-card {
   min-width: 92px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 9px 11px;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(13, 15, 11, 0.72);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
+    var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
 }
 
 .hud-card span {
   display: block;
-  color: rgba(245, 242, 232, 0.68);
+  color: var(--muted);
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
@@ -81,10 +110,11 @@ canvas {
   margin-top: 2px;
   font-size: 16px;
   line-height: 1.1;
+  letter-spacing: 0;
 }
 
 .hud-card.hp strong {
-  color: #74de71;
+  color: var(--acid);
 }
 
 .hud-card.money strong,
@@ -102,20 +132,26 @@ canvas {
   gap: 12px;
   transform: translateX(-50%);
   padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(13, 15, 11, 0.76);
+  background:
+    linear-gradient(90deg, rgba(116, 199, 255, 0.12), rgba(255, 255, 255, 0.045), rgba(255, 109, 93, 0.12)),
+    rgba(13, 15, 11, 0.82);
   font-size: 15px;
   font-weight: 900;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
   pointer-events: none;
 }
 
 .ct {
-  color: #73b9ff;
+  color: var(--ct);
+  text-shadow: 0 0 12px rgba(116, 199, 255, 0.35);
 }
 
 .tr {
-  color: #f2b85b;
+  color: var(--tr);
+  text-shadow: 0 0 12px rgba(255, 189, 104, 0.35);
 }
 
 #miniMap {
@@ -125,10 +161,13 @@ canvas {
   z-index: 10;
   width: 180px;
   height: 180px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(245, 242, 232, 0.16);
   border-radius: 50%;
-  background: rgba(13, 15, 11, 0.74);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+  background:
+    radial-gradient(circle, rgba(116, 199, 255, 0.08), transparent 58%),
+    rgba(13, 15, 11, 0.76);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34), inset 0 0 0 4px rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
   pointer-events: none;
 }
 
@@ -141,8 +180,11 @@ canvas {
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 8px;
-  background: rgba(13, 15, 11, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
+    rgba(13, 15, 11, 0.8);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
   pointer-events: none;
 }
 
@@ -152,7 +194,7 @@ canvas {
 }
 
 .online-panel strong {
-  color: #d8f28a;
+  color: var(--acid);
   font-size: 13px;
   font-weight: 1000;
 }
@@ -178,11 +220,13 @@ canvas {
 }
 
 .slot-dot.ct {
-  background: #73b9ff;
+  background: var(--ct);
+  box-shadow: 0 0 10px rgba(116, 199, 255, 0.42);
 }
 
 .slot-dot.tr {
-  background: #f2b85b;
+  background: var(--tr);
+  box-shadow: 0 0 10px rgba(255, 189, 104, 0.42);
 }
 
 #crosshair {
@@ -190,44 +234,104 @@ canvas {
   left: 50%;
   top: 50%;
   z-index: 9;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  filter: drop-shadow(0 0 7px rgba(0, 0, 0, 0.65));
 }
 
 #crosshair span {
   position: absolute;
-  background: rgba(245, 242, 232, 0.92);
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  background: rgba(234, 255, 180, 0.95);
+  box-shadow: 0 0 10px rgba(200, 239, 104, 0.34);
+  transition: transform 90ms ease, background 90ms ease, opacity 90ms ease;
 }
 
 #crosshair span:nth-child(1) {
-  left: 16px;
+  left: 21px;
   top: 0;
   width: 2px;
-  height: 10px;
+  height: 13px;
 }
 
 #crosshair span:nth-child(2) {
-  left: 16px;
+  left: 21px;
   bottom: 0;
   width: 2px;
-  height: 10px;
+  height: 13px;
 }
 
 #crosshair span:nth-child(3) {
   left: 0;
-  top: 16px;
-  width: 10px;
+  top: 21px;
+  width: 13px;
   height: 2px;
 }
 
 #crosshair span:nth-child(4) {
   right: 0;
-  top: 16px;
-  width: 10px;
+  top: 21px;
+  width: 13px;
   height: 2px;
+}
+
+#crosshair i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border: 1px solid rgba(20, 24, 19, 0.75);
+  border-radius: 50%;
+  background: #f8ffd8;
+  box-shadow: 0 0 11px rgba(200, 239, 104, 0.58);
+  transform: translate(-50%, -50%);
+}
+
+#crosshair::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(234, 255, 180, 0.26);
+  border-radius: 50%;
+}
+
+#crosshair::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 2px solid rgba(255, 109, 93, 0);
+  border-radius: 50%;
+  transform: scale(0.7);
+  transition: border-color 90ms ease, transform 90ms ease;
+}
+
+#crosshair.firing span:nth-child(1) {
+  transform: translateY(-4px);
+}
+
+#crosshair.firing span:nth-child(2) {
+  transform: translateY(4px);
+}
+
+#crosshair.firing span:nth-child(3) {
+  transform: translateX(-4px);
+}
+
+#crosshair.firing span:nth-child(4) {
+  transform: translateX(4px);
+}
+
+#crosshair.hit span,
+#crosshair.hit i {
+  background: #ff6d5d;
+}
+
+#crosshair.hit::after {
+  border-color: rgba(255, 109, 93, 0.9);
+  transform: scale(1);
 }
 
 #buyButton {
@@ -237,13 +341,16 @@ canvas {
   z-index: 12;
   min-width: 126px;
   padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(215, 255, 110, 0.2);
   border-radius: 8px;
-  background: rgba(33, 42, 24, 0.86);
-  color: #f5f2e8;
+  background:
+    linear-gradient(135deg, rgba(215, 255, 110, 0.24), rgba(255, 255, 255, 0.055)),
+    rgba(33, 42, 24, 0.9);
+  color: var(--text);
   font-size: 14px;
   font-weight: 900;
   cursor: pointer;
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.28);
 }
 
 #touchControls {
@@ -261,7 +368,9 @@ canvas {
   height: 132px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 50%;
-  background: rgba(10, 12, 9, 0.45);
+  background:
+    radial-gradient(circle, rgba(215, 255, 110, 0.12), transparent 58%),
+    rgba(10, 12, 9, 0.5);
   box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.06), 0 16px 30px rgba(0, 0, 0, 0.32);
   pointer-events: auto;
   touch-action: none;
@@ -274,7 +383,7 @@ canvas {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(200, 239, 104, 0.86);
+  background: var(--acid);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
   transform: translate(-50%, -50%);
 }
@@ -293,22 +402,22 @@ canvas {
   min-height: 48px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  background: rgba(13, 15, 11, 0.72);
-  color: #f5f2e8;
+  background: rgba(13, 15, 11, 0.76);
+  color: var(--text);
   font-size: 12px;
   font-weight: 1000;
   touch-action: none;
 }
 
 .touch-actions button.active {
-  border-color: #c8ef68;
-  background: rgba(200, 239, 104, 0.22);
+  border-color: var(--acid);
+  background: rgba(215, 255, 110, 0.22);
 }
 
 .touch-actions .touch-fire {
   grid-column: span 2;
   min-height: 64px;
-  background: linear-gradient(135deg, rgba(242, 91, 91, 0.82), rgba(242, 184, 91, 0.72));
+  background: linear-gradient(135deg, rgba(255, 109, 93, 0.9), rgba(255, 189, 104, 0.82));
   color: #140b08;
   font-size: 17px;
 }
@@ -344,8 +453,9 @@ canvas {
   place-items: center;
   padding: 24px;
   background:
-    linear-gradient(90deg, rgba(7, 9, 7, 0.95), rgba(16, 17, 13, 0.78)),
-    linear-gradient(180deg, rgba(16, 17, 13, 0.58), rgba(16, 17, 13, 0.96)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 56px),
+    linear-gradient(90deg, rgba(7, 9, 7, 0.98), rgba(16, 17, 13, 0.78)),
+    linear-gradient(180deg, rgba(116, 199, 255, 0.1), rgba(16, 17, 13, 0.96)),
     #10110d;
 }
 
@@ -357,12 +467,13 @@ canvas {
 .screen-inner,
 .buy-panel {
   width: min(1060px, 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(32, 39, 27, 0.93), rgba(12, 14, 11, 0.93)),
-    rgba(18, 22, 15, 0.9);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+    linear-gradient(135deg, rgba(31, 37, 30, 0.94), rgba(10, 13, 11, 0.96)),
+    var(--panel-strong);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
 }
 
 .screen-inner {
@@ -384,8 +495,9 @@ canvas {
   padding: 24px;
   border-radius: 8px;
   background:
-    linear-gradient(120deg, rgba(200, 239, 104, 0.13), rgba(115, 185, 255, 0.07)),
+    linear-gradient(120deg, rgba(215, 255, 110, 0.14), rgba(116, 199, 255, 0.08)),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 42px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055);
 }
 
 .start-console {
@@ -394,13 +506,13 @@ canvas {
   justify-content: center;
   gap: 14px;
   padding: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(7, 9, 7, 0.42);
 }
 
 .eyebrow {
-  color: #bddf80;
+  color: var(--acid);
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -411,7 +523,8 @@ h1 {
   margin-top: 8px;
   font-size: clamp(48px, 8vw, 104px);
   line-height: 0.9;
-  color: #f5f2e8;
+  color: var(--text);
+  text-shadow: 0 16px 40px rgba(0, 0, 0, 0.48), 0 0 22px rgba(215, 255, 110, 0.12);
 }
 
 h2 {
@@ -431,6 +544,7 @@ h2 {
   margin-top: 24px;
   padding: 14px;
   border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(245, 242, 232, 0.84);
   font-size: 14px;
@@ -464,8 +578,8 @@ button {
 }
 
 .name-field input:focus {
-  border-color: #c8ef68;
-  box-shadow: 0 0 0 3px rgba(200, 239, 104, 0.18);
+  border-color: var(--acid);
+  box-shadow: 0 0 0 3px rgba(215, 255, 110, 0.18);
 }
 
 .mode-choice {
@@ -490,8 +604,8 @@ button {
 }
 
 .mode-choice button.active {
-  border-color: #c8ef68;
-  background: rgba(200, 239, 104, 0.18);
+  border-color: var(--acid);
+  background: rgba(215, 255, 110, 0.18);
   color: #eaffb4;
 }
 
@@ -525,7 +639,7 @@ button {
   border-radius: 8px;
   padding: 13px 22px;
   color: #10110d;
-  background: #c8ef68;
+  background: linear-gradient(135deg, var(--acid), #94d84e);
   font-size: 16px;
   font-weight: 1000;
   cursor: pointer;
@@ -534,7 +648,7 @@ button {
 .online-start {
   padding: 13px 22px;
   background:
-    linear-gradient(135deg, rgba(115, 185, 255, 0.38), rgba(242, 184, 91, 0.24)),
+    linear-gradient(135deg, rgba(116, 199, 255, 0.4), rgba(255, 109, 93, 0.24)),
     rgba(255, 255, 255, 0.07);
 }
 
