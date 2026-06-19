@@ -10,6 +10,7 @@ Jogar: https://bentobarbosa.github.io/tatico/
 - WASD: mover
 - Mouse: mirar
 - Clique esquerdo do mouse ou touchpad: atirar
+- Espaço: pular e subir em caixas/muretas baixas
 - R: recarregar
 - B: comprar, durante a fase de compra
 - Shift: andar devagar
@@ -23,10 +24,13 @@ Jogar: https://bentobarbosa.github.io/tatico/
 - Movimento corrigido para andar exatamente na direção da câmera, com mira por pointer lock e fallback por arrasto do mouse
 - Gráficos com tone mapping, sombras melhores, luz de preenchimento e mais detalhes no mapa
 - Mais elementos no mapa: casas, oficinas, mercados, veículos, muretas e coberturas extras com colisão
+- Pulo com gravidade e plataformas escaláveis em caixas, carros e muretas
+- Mira central em X com feedback de tiro e acerto
 - Personagens TR com corpo 3D: tronco em `CapsuleGeometry`, cabeça, capacete, visor, colete, braços, mãos, pernas, botas e arma
 - Modelo em primeira pessoa com braços e arma visível
 - Sistema de rodadas CT vs TR
 - Multiplayer online 4x4 com WebSocket, salas públicas/privadas, código de sala, times CT/TR, limite de 8 jogadores, placar, vida, tiros, dano e reset de rodada
+- Modo online por eliminação: morreu, espera o round acabar; vitória/derrota pagam dinheiro diferente para compra de armas
 - Controles touch para celular/iPad: joystick de movimento, mirar arrastando na tela, atirar, recarregar, comprar e andar devagar
 - Bots com IA simples: procuram o jogador, usam linha de visão, avançam, recuam e atiram
 - Armas compráveis: pistola, SMG, escopeta, fuzil e sniper

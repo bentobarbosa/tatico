@@ -290,6 +290,28 @@ canvas {
   transform: translate(-50%, -50%);
 }
 
+#crosshair i::before,
+#crosshair i::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(234, 255, 180, 0.76);
+  box-shadow: 0 0 9px rgba(200, 239, 104, 0.28);
+  transform-origin: center;
+}
+
+#crosshair i::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+#crosshair i::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 #crosshair::before {
   content: "";
   position: absolute;
@@ -325,7 +347,9 @@ canvas {
 }
 
 #crosshair.hit span,
-#crosshair.hit i {
+#crosshair.hit i,
+#crosshair.hit i::before,
+#crosshair.hit i::after {
   background: #ff6d5d;
 }
 

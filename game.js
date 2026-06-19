@@ -14,6 +14,10 @@
   const PLAYER_HEIGHT = 1.72;
   const PLAYER_RADIUS = 0.55;
   const BOT_RADIUS = 0.62;
+  const GRAVITY = 15.5;
+  const JUMP_SPEED = 8.2;
+  const MAX_FALL_SPEED = -18;
+  const CLIMB_EPSILON = 0.32;
   const Y_UP = new THREE.Vector3(0, 1, 0);
   const ONLINE_SEND_MS = 55;
 
@@ -92,6 +96,10 @@
     fireCooldown: 0,
     reloadEnd: 0,
     reloading: false,
+    velocityY: 0,
+    grounded: true,
+    groundY: 0,
+    jumpHeld: false,
     alive: true
   };
 
@@ -104,6 +112,8 @@
     scores: { CT: 0, TR: 0 },
     slots: { CT: 0, TR: 0 },
     room: null,
+    matchState: "waiting",
+    buyRemainingMs: 0,
     pendingRoomMode: "quick",
     pendingRoomCode: "",
     pendingPrivate: false,
@@ -122,6 +132,7 @@
     lastLookX: 0,
     lastLookY: 0,
     firing: false,
+    jump: false,
     slow: false
   };
 
@@ -301,7 +312,8 @@
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
-    walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h, mesh, label });
+    const climbable = h <= 2.25 && !label.includes("muro");
+    walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h, mesh, label, climbable });
     decorateWall(mesh, w, d, h, label);
     return mesh;
   }
@@ -369,6 +381,8 @@
     line.position.copy(mesh.position);
     scene.add(line);
     mesh.userData.edge = line;
+    const wall = walls[walls.length - 1];
+    if (wall) wall.climbable = true;
     return mesh;
   }
 
@@ -574,7 +588,8 @@
       halfZ: horizontal ? 1.12 : 2.4,
       h: 1.75,
       mesh: group,
-      label: "veiculo"
+      label: "veiculo",
+      climbable: true
     });
     return group;
   }
@@ -799,6 +814,10 @@
     player.hp = 100;
     player.kills = 0;
     player.alive = true;
+    player.velocityY = 0;
+    player.grounded = true;
+    player.groundY = 0;
+    player.jumpHeld = false;
     player.reloading = false;
     player.fireCooldown = 0;
     player.reloadEnd = 0;
@@ -924,12 +943,12 @@
     net.pendingRoomCode = roomCode;
     net.pendingPrivate = el("privateRoom").checked;
     phase = "connecting";
-    player.money = 0;
-    player.owned = new Set(WEAPON_ORDER);
-    equip("rifle");
+    player.money = 800;
+    player.owned = new Set(["pistol"]);
+    equip("pistol");
     localStorage.setItem("taticoName", getPlayerName());
     el("startScreen").classList.add("hidden");
-    el("buyButton").hidden = true;
+    el("buyButton").hidden = false;
     showBuy(false);
     connectOnline(url);
   }
@@ -985,46 +1004,79 @@
       net.id = data.id;
       net.team = data.team;
       net.room = data.room || null;
+      net.matchState = data.matchState || "waiting";
+      net.buyRemainingMs = data.buyRemainingMs || 0;
       net.joined = true;
-      phase = "live";
+      phase = net.matchState === "buy" ? "buy" : net.matchState === "live" ? "live" : "connecting";
       player.alive = true;
       player.hp = 100;
-      player.position.set(data.spawn.x, PLAYER_HEIGHT, data.spawn.z);
+      player.position.set(data.spawn.x, data.spawn.y || PLAYER_HEIGHT, data.spawn.z);
       player.yaw = data.spawn.yaw || 0;
       player.pitch = 0;
+      player.velocityY = 0;
+      player.grounded = true;
       ctScore = data.scores?.CT || 0;
       trScore = data.scores?.TR || 0;
       const roomText = net.room?.code ? "Sala " + net.room.code : "Sala online";
       setMessage("Voce entrou no " + data.team, roomText + " · clique no jogo para mirar.", 3000);
       el("onlinePanel").hidden = false;
       updateOnlinePanel();
+      if (phase === "buy") showBuy(true);
       return;
     }
 
     if (data.type === "state") {
+      const previousPhase = phase;
       net.players = data.players || [];
       net.scores = data.scores || net.scores;
       net.slots = data.slots || net.slots;
       net.room = data.room || net.room;
+      net.matchState = data.matchState || net.matchState;
+      net.buyRemainingMs = data.buyRemainingMs || 0;
       round = data.round || round;
       ctScore = net.scores.CT || 0;
       trScore = net.scores.TR || 0;
 
+      if (net.mode === "online") {
+        if (net.matchState === "buy") phase = "buy";
+        else if (net.matchState === "live") phase = "live";
+        else if (net.matchState === "resetting") phase = "round_end";
+        else phase = "connecting";
+
+        if (phase === "buy" && previousPhase !== "buy") {
+          showBuy(true);
+          setMessage("Fase de compra", "Compre arma. O round comeca em alguns segundos.", 2200);
+        }
+        if (phase === "live" && previousPhase === "buy") {
+          showBuy(false);
+          setMessage("Combate liberado", "Sem respawn ate o fim do round.", 1700);
+        }
+      }
+
       const self = net.players.find(p => p.id === net.id);
       if (self) {
+        const wasAlive = player.alive;
         player.hp = self.hp;
         player.alive = self.alive;
+        player.money = self.money ?? player.money;
+        player.owned = new Set(self.owned || ["pistol"]);
+        if (self.weaponId && self.weaponId !== player.weaponId) equip(self.weaponId);
         if (!self.alive) {
           mouse.down = false;
           touchInput.firing = false;
+          if (wasAlive && phase === "live") setMessage("Voce morreu", "Aguarde o round acabar.", 1800);
         }
         if (self.spawnId !== net.spawnId) {
           net.spawnId = self.spawnId;
-          player.position.set(self.x, PLAYER_HEIGHT, self.z);
+          player.position.set(self.x, self.y || PLAYER_HEIGHT, self.z);
           player.yaw = self.yaw;
           player.pitch = self.pitch || 0;
           player.alive = self.alive;
           player.hp = self.hp;
+          player.velocityY = 0;
+          player.grounded = true;
+          player.groundY = Math.max(0, player.position.y - PLAYER_HEIGHT);
+          equip(self.weaponId || player.weaponId);
         }
       }
 
@@ -1057,7 +1109,8 @@
     }
 
     if (data.type === "error") {
-      setMessage("Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
+      setMessage(net.joined ? "Aviso online" : "Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
+      if (net.joined) return;
       phase = "menu";
       el("startScreen").classList.remove("hidden");
       el("buyButton").hidden = false;
@@ -1078,7 +1131,7 @@
         remote = { mesh };
         remotePlayers.set(info.id, remote);
       }
-      remote.mesh.position.set(info.x, 0, info.z);
+      remote.mesh.position.set(info.x, Math.max(0, (info.y || PLAYER_HEIGHT) - PLAYER_HEIGHT), info.z);
       remote.mesh.rotation.y = info.yaw || 0;
       remote.mesh.visible = info.alive;
     }
@@ -1099,8 +1152,9 @@
     el("onlinePanel").hidden = false;
     const code = net.room?.code || "----";
     const privacy = net.room?.public === false ? "Privada" : "Publica";
+    const stateLabel = net.matchState === "buy" ? "Compra " + Math.ceil((net.buyRemainingMs || 0) / 1000) + "s" : net.matchState === "live" ? "Combate" : net.matchState === "resetting" ? "Fim do round" : "Aguardando";
     el("onlineTitle").textContent = "Sala " + code + " · " + privacy;
-    el("onlineTeam").textContent = (net.team ? "Seu time: " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
+    el("onlineTeam").textContent = stateLabel + " · " + (net.team ? "Time " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
 
     const dots = [];
     for (let i = 0; i < 4; i++) dots.push("<span class=\"slot-dot " + (i < (net.slots.CT || 0) ? "ct" : "") + "\"></span>");
@@ -1117,6 +1171,11 @@
   }
 
   function startRound() {
+    if (net.mode === "online") {
+      showBuy(false);
+      setMessage("Aguardando round", "A compra fecha automaticamente.", 1200);
+      return;
+    }
     phase = "live";
     showBuy(false);
     lockPointer();
@@ -1139,8 +1198,8 @@
   }
 
   function showBuy(open) {
-    if (net.mode === "online" && open) {
-      setMessage("Online 4x4", "Equipamento fixo para deixar a partida justa.", 1500);
+    if (net.mode === "online" && open && phase !== "buy") {
+      setMessage("Loja fechada", "So da para comprar no inicio do round.", 1500);
       return;
     }
     if (open && document.pointerLockElement === renderer.domElement) {
@@ -1153,6 +1212,7 @@
 
   function renderBuy() {
     el("buyMoney").textContent = "$" + player.money;
+    el("playRound").textContent = net.mode === "online" ? "Fechar loja" : "Entrar na rodada";
     el("weaponCards").innerHTML = WEAPON_ORDER.map(id => {
       const w = WEAPONS[id];
       const owned = player.owned.has(id);
@@ -1169,6 +1229,15 @@
     if (phase !== "buy") return;
     const w = WEAPONS[id];
     if (!w) return;
+    if (net.mode === "online") {
+      if (!player.owned.has(id) && player.money < w.price) {
+        setMessage("Dinheiro insuficiente", "Ganhe rounds ou eliminações para comprar.", 1300);
+        return;
+      }
+      sendOnline({ type: "buy", weaponId: id });
+      if (player.owned.has(id)) equip(id);
+      return;
+    }
     if (!player.owned.has(id)) {
       if (player.money < w.price) return;
       player.money -= w.price;
@@ -1221,12 +1290,30 @@
     return dir.normalize();
   }
 
-  function collides(pos, radius) {
+  function footY(pos = player.position) {
+    return pos.y - PLAYER_HEIGHT;
+  }
+
+  function insideWallXZ(pos, wall, radius = 0) {
+    return Math.abs(pos.x - wall.x) < wall.halfX + radius && Math.abs(pos.z - wall.z) < wall.halfZ + radius;
+  }
+
+  function groundHeightAt(pos, radius = PLAYER_RADIUS) {
+    let ground = 0;
     for (const wall of walls) {
-      if (
-        Math.abs(pos.x - wall.x) < wall.halfX + radius &&
-        Math.abs(pos.z - wall.z) < wall.halfZ + radius
-      ) {
+      if (!wall.climbable) continue;
+      if (insideWallXZ(pos, wall, Math.max(0.02, radius * 0.35))) {
+        ground = Math.max(ground, wall.h);
+      }
+    }
+    return ground;
+  }
+
+  function collides(pos, radius) {
+    const currentFoot = footY(pos);
+    for (const wall of walls) {
+      if (insideWallXZ(pos, wall, radius)) {
+        if (wall.climbable && currentFoot >= wall.h - CLIMB_EPSILON) continue;
         return true;
       }
     }
@@ -1324,7 +1411,7 @@
     pulseCrosshair();
 
     const origin = player.position.clone();
-    origin.y = PLAYER_HEIGHT - 0.05;
+    origin.y = player.position.y - 0.05;
     const baseDir = cameraDir();
     let hitSomething = false;
     for (let i = 0; i < w.pellets; i++) {
@@ -1368,7 +1455,7 @@
     pulseCrosshair();
 
     const origin = player.position.clone();
-    origin.y = PLAYER_HEIGHT - 0.05;
+    origin.y = player.position.y - 0.05;
     const dir = cameraDir();
     const endDist = firstWallDistance(origin, dir, w.range);
     createTracer(origin, origin.clone().addScaledVector(dir, endDist), net.team === "CT" ? 0x73b9ff : 0xf2b85b);
@@ -1427,8 +1514,41 @@
     updateHud();
   }
 
+  function tryJump() {
+    if (!player.alive || phase !== "live") return;
+    if (player.grounded) {
+      player.velocityY = JUMP_SPEED;
+      player.grounded = false;
+      player.jumpHeld = true;
+    }
+  }
+
+  function updateVerticalPhysics(dt) {
+    const ground = groundHeightAt(player.position);
+    const jumpActive = keys.Space || touchInput.jump;
+    if (jumpActive && !player.jumpHeld) tryJump();
+    if (!jumpActive) player.jumpHeld = false;
+
+    if (!player.grounded || player.velocityY !== 0 || footY() > ground + 0.02) {
+      player.velocityY = Math.max(player.velocityY - GRAVITY * dt, MAX_FALL_SPEED);
+      player.position.y += player.velocityY * dt;
+    }
+
+    const nextGround = groundHeightAt(player.position);
+    if (footY() <= nextGround) {
+      player.position.y = PLAYER_HEIGHT + nextGround;
+      player.velocityY = 0;
+      player.grounded = true;
+      player.groundY = nextGround;
+    } else {
+      player.grounded = false;
+      player.groundY = nextGround;
+    }
+  }
+
   function updatePlayer(dt) {
     if (!player.alive || phase !== "live") return;
+    updateVerticalPhysics(dt);
     const f = forwardDir();
     const r = rightDir();
     let mx = 0;
@@ -1450,6 +1570,7 @@
       const speed = keys.ShiftLeft || keys.ShiftRight || touchInput.slow ? 3.0 : 6.1;
       moveCircle(player, mx * speed * dt, mz * speed * dt, PLAYER_RADIUS);
     }
+    updateVerticalPhysics(dt);
     if (player.reloading && performance.now() >= player.reloadEnd) {
       player.reloading = false;
       player.ammo = weapon().mag;
@@ -1601,7 +1722,7 @@
     el("hp").textContent = Math.ceil(player.hp);
     el("weapon").textContent = weapon().name;
     el("ammo").textContent = player.reloading ? "recarregando" : player.ammo + "/" + weapon().mag;
-    el("money").textContent = net.mode === "online" ? (net.team || "Online") : "$" + player.money;
+    el("money").textContent = "$" + player.money;
     el("ctScore").textContent = "CT " + ctScore;
     el("trScore").textContent = trScore + " TR";
     el("roundLabel").textContent = net.mode === "online" ? "4x4" : "R" + round;
@@ -1663,8 +1784,9 @@
   function updateTouchControls() {
     const shouldShow = phase === "live" && ("ontouchstart" in window || touchInput.used || matchMedia("(pointer: coarse)").matches);
     el("touchControls").hidden = !shouldShow;
-    el("touchBuy").hidden = net.mode === "online";
+    el("touchBuy").hidden = false;
     el("touchWalk").classList.toggle("active", touchInput.slow);
+    el("touchJump").classList.toggle("active", touchInput.jump);
   }
 
   function resetTouchStick() {
@@ -1708,8 +1830,12 @@
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", event => {
       keys[event.code] = true;
+      if (event.code === "Space") {
+        event.preventDefault();
+        tryJump();
+      }
       if (event.code === "KeyR") reload();
-      if (event.code === "KeyB" && phase === "buy" && net.mode !== "online") showBuy(true);
+      if (event.code === "KeyB" && phase === "buy") showBuy(true);
       if (event.code === "Escape") {
         mouse.freeLook = false;
         mouse.down = false;
@@ -1720,6 +1846,7 @@
     });
     window.addEventListener("keyup", event => {
       keys[event.code] = false;
+      if (event.code === "Space") player.jumpHeld = false;
     });
     window.addEventListener("mousemove", event => {
       if (phase !== "live") return;
@@ -1865,6 +1992,18 @@
       });
     });
     el("touchReload").addEventListener("click", reload);
+    el("touchJump").addEventListener("pointerdown", event => {
+      touchInput.used = true;
+      touchInput.jump = true;
+      tryJump();
+      event.preventDefault();
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(type => {
+      el("touchJump").addEventListener(type, () => {
+        touchInput.jump = false;
+        player.jumpHeld = false;
+      });
+    });
     el("touchBuy").addEventListener("click", () => {
       if (phase === "buy") showBuy(true);
       else setMessage("Compra fechada", "So da para comprar antes da rodada.", 1100);

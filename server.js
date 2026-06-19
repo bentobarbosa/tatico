@@ -16,15 +16,20 @@ const PLAYER_HEIGHT = 1.72;
 const PLAYER_RADIUS = 0.55;
 const BOT_RADIUS = 0.62;
 const TICK_MS = 75;
+const CLIMB_EPSILON = 0.32;
 const ROOM_CAPACITY = 8;
+const BUY_TIME_MS = 9500;
+const WIN_REWARD = 3250;
+const LOSS_REWARD = 1900;
+const DRAW_REWARD = 2200;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const WEAPONS = {
-  pistol: { damage: 28, fireMs: 260, spread: 0.015, pellets: 1, range: 70 },
-  smg: { damage: 18, fireMs: 88, spread: 0.045, pellets: 1, range: 60 },
-  shotgun: { damage: 13, fireMs: 720, spread: 0.13, pellets: 8, range: 38 },
-  rifle: { damage: 34, fireMs: 120, spread: 0.025, pellets: 1, range: 85 },
-  sniper: { damage: 120, fireMs: 1350, spread: 0.004, pellets: 1, range: 115 }
+  pistol: { price: 0, damage: 28, fireMs: 260, spread: 0.015, pellets: 1, range: 70 },
+  smg: { price: 1000, damage: 18, fireMs: 88, spread: 0.045, pellets: 1, range: 60 },
+  shotgun: { price: 1300, damage: 13, fireMs: 720, spread: 0.13, pellets: 8, range: 38 },
+  rifle: { price: 2500, damage: 34, fireMs: 120, spread: 0.025, pellets: 1, range: 85 },
+  sniper: { price: 4200, damage: 120, fireMs: 1350, spread: 0.004, pellets: 1, range: 115 }
 };
 
 const mimeTypes = {
@@ -128,6 +133,7 @@ function createRoom(isPrivate = false) {
     round: 1,
     matchState: "waiting",
     resetAt: 0,
+    buyEndAt: 0,
     createdAt: Date.now()
   };
   rooms.set(room.code, room);
@@ -146,11 +152,12 @@ function findPublicRoom() {
 }
 
 function addBox(x, z, w, d, h) {
-  walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h });
+  walls.push({ x, z, halfX: w / 2, halfZ: d / 2, h, climbable: h <= 2.25 });
 }
 
 function addCrate(x, z, size = 3, h = 2.1) {
   addBox(x, z, size, size, h);
+  walls[walls.length - 1].climbable = true;
 }
 
 function addContainer(x, z, rot = 0) {
@@ -179,7 +186,8 @@ function addVehicle(x, z, rot = 0) {
     z,
     halfX: horizontal ? 2.4 : 1.12,
     halfZ: horizontal ? 1.12 : 2.4,
-    h: 1.75
+    h: 1.75,
+    climbable: true
   });
 }
 
@@ -244,12 +252,15 @@ function buildCollisionMap() {
   addBarrel(64, 26);
 }
 
+function insideWallXZ(pos, wall, radius = 0) {
+  return Math.abs(pos.x - wall.x) < wall.halfX + radius && Math.abs(pos.z - wall.z) < wall.halfZ + radius;
+}
+
 function collides(pos, radius) {
+  const footY = finiteNumber(pos.y, PLAYER_HEIGHT) - PLAYER_HEIGHT;
   for (const wall of walls) {
-    if (
-      Math.abs(pos.x - wall.x) < wall.halfX + radius &&
-      Math.abs(pos.z - wall.z) < wall.halfZ + radius
-    ) {
+    if (insideWallXZ(pos, wall, radius)) {
+      if (wall.climbable && footY >= wall.h - CLIMB_EPSILON) continue;
       return true;
     }
   }
@@ -365,6 +376,8 @@ function serializePlayers(room) {
     hp: player.hp,
     alive: player.alive,
     weaponId: player.weaponId,
+    money: player.money,
+    owned: [...player.owned],
     kills: player.kills,
     deaths: player.deaths,
     spawnId: player.spawnId
@@ -412,6 +425,7 @@ function broadcastState(room) {
     scores: room.scores,
     round: room.round,
     matchState: room.matchState,
+    buyRemainingMs: room.matchState === "buy" ? Math.max(0, room.buyEndAt - Date.now()) : 0,
     room: roomSummary(room),
     slots: { CT: teamCount(room, "CT"), TR: teamCount(room, "TR") }
   });
@@ -428,13 +442,28 @@ function broadcastRound(room, title, sub) {
   });
 }
 
-function resetRound(room, title = "Nova rodada", sub = "Times reposicionados.") {
-  room.round++;
-  room.matchState = teamsReady(room) ? "live" : "waiting";
+function awardTeamMoney(room, winner) {
+  for (const player of room.players.values()) {
+    let amount = DRAW_REWARD;
+    if (winner) amount = player.team === winner ? WIN_REWARD : LOSS_REWARD;
+    player.money = Math.min(16000, player.money + amount);
+  }
+}
+
+function startBuyPhase(room, title = "Fase de compra", sub = "Compre arma e prepare a rodada.") {
+  room.matchState = teamsReady(room) ? "buy" : "waiting";
+  room.buyEndAt = room.matchState === "buy" ? Date.now() + BUY_TIME_MS : 0;
   room.resetAt = 0;
-  for (const player of room.players.values()) spawnPlayer(room, player);
+  for (const player of room.players.values()) {
+    spawnPlayer(room, player);
+  }
   broadcastRound(room, title, sub);
   broadcastState(room);
+}
+
+function resetRound(room, title = "Nova rodada", sub = "Times reposicionados.") {
+  room.round++;
+  startBuyPhase(room, title, sub);
 }
 
 function aliveCount(room, team) {
@@ -454,6 +483,7 @@ function checkRoundEnd(room) {
     return;
   }
   if (ctAlive === 0 && trAlive === 0) {
+    awardTeamMoney(room, null);
     room.matchState = "resetting";
     room.resetAt = Date.now() + 3200;
     broadcastRound(room, "Rodada empatada", "Todo mundo caiu. Resetando...");
@@ -462,9 +492,10 @@ function checkRoundEnd(room) {
 
   const winner = ctAlive > 0 ? "CT" : "TR";
   room.scores[winner]++;
+  awardTeamMoney(room, winner);
   room.matchState = "resetting";
   room.resetAt = Date.now() + 3200;
-  broadcastRound(room, winner + " venceu", "Nova rodada em alguns segundos.");
+  broadcastRound(room, winner + " venceu", "Vencedores receberam $" + WIN_REWARD + ". Perdedores receberam $" + LOSS_REWARD + ".");
 }
 
 function getRoomForJoin(data) {
@@ -507,7 +538,9 @@ function handleJoin(socket, data) {
     pitch: 0,
     hp: 100,
     alive: true,
-    weaponId: "rifle",
+    weaponId: "pistol",
+    money: 800,
+    owned: new Set(["pistol"]),
     kills: 0,
     deaths: 0,
     fireUntil: 0,
@@ -522,8 +555,7 @@ function handleJoin(socket, data) {
   spawnPlayer(room, player);
 
   if (teamsReady(room) && room.matchState === "waiting") {
-    room.matchState = "live";
-    broadcastRound(room, "Partida 4x4 liberada", "Times CT e TR prontos para combate.");
+    startBuyPhase(room, "Partida 4x4 liberada", "Compre armas antes do combate.");
   }
 
   wsSend(socket, {
@@ -533,6 +565,8 @@ function handleJoin(socket, data) {
     spawn: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
     scores: room.scores,
     round: room.round,
+    matchState: room.matchState,
+    buyRemainingMs: room.matchState === "buy" ? Math.max(0, room.buyEndAt - Date.now()) : 0,
     room: roomSummary(room)
   });
 
@@ -551,6 +585,7 @@ function handleState(socket, data) {
 
   const next = {
     x: clamp(finiteNumber(data.x, player.x), -WORLD_W / 2 + PLAYER_RADIUS, WORLD_W / 2 - PLAYER_RADIUS),
+    y: clamp(finiteNumber(data.y, player.y), PLAYER_HEIGHT, PLAYER_HEIGHT + 3),
     z: clamp(finiteNumber(data.z, player.z), -WORLD_D / 2 + PLAYER_RADIUS, WORLD_D / 2 - PLAYER_RADIUS)
   };
 
@@ -559,10 +594,29 @@ function handleState(socket, data) {
     player.z = next.z;
   }
 
-  player.y = PLAYER_HEIGHT;
+  player.y = next.y;
   player.yaw = finiteNumber(data.yaw, player.yaw);
   player.pitch = clamp(finiteNumber(data.pitch, player.pitch), -1.18, 1.08);
-  if (WEAPONS[data.weaponId]) player.weaponId = data.weaponId;
+  if (WEAPONS[data.weaponId] && player.owned.has(data.weaponId)) player.weaponId = data.weaponId;
+}
+
+function handleBuy(socket, data) {
+  const room = roomFromSocket(socket);
+  const player = room?.players.get(socket.playerId);
+  const id = String(data.weaponId || "");
+  const w = WEAPONS[id];
+  if (!room || !player || !w || room.matchState !== "buy") return;
+
+  if (!player.owned.has(id)) {
+    if (player.money < w.price) {
+      wsSend(socket, { type: "error", message: "Dinheiro insuficiente para comprar essa arma." });
+      return;
+    }
+    player.money -= w.price;
+    player.owned.add(id);
+  }
+  player.weaponId = id;
+  broadcastState(room);
 }
 
 function handleFire(socket, data) {
@@ -578,7 +632,7 @@ function handleFire(socket, data) {
   if (now < player.fireUntil) return;
   player.fireUntil = now + w.fireMs;
 
-  const origin = { x: player.x, y: PLAYER_HEIGHT - 0.05, z: player.z };
+  const origin = { x: player.x, y: player.y - 0.05, z: player.z };
   const shotEvents = [];
 
   for (let i = 0; i < w.pellets; i++) {
@@ -591,7 +645,7 @@ function handleFire(socket, data) {
 
     for (const target of room.players.values()) {
       if (!target.alive || target.team === player.team || target.id === player.id) continue;
-      const center = { x: target.x, y: 1.15, z: target.z };
+      const center = { x: target.x, y: target.y - PLAYER_HEIGHT + 1.15, z: target.z };
       const distance = raySphere(origin, dir, center, BOT_RADIUS);
       if (distance !== null && distance < hitDist) {
         hitDist = distance;
@@ -606,6 +660,7 @@ function handleFire(socket, data) {
         hitPlayer.deaths++;
         hitPlayer.respawnAt = Date.now() + 4500;
         player.kills++;
+        player.money = Math.min(16000, player.money + 300);
       }
     }
 
@@ -639,6 +694,7 @@ function handleSocketMessage(socket, message) {
   if (data.type === "join") handleJoin(socket, data);
   else if (data.type === "state") handleState(socket, data);
   else if (data.type === "fire") handleFire(socket, data);
+  else if (data.type === "buy") handleBuy(socket, data);
 }
 
 function readFrames(socket, chunk) {
@@ -788,12 +844,17 @@ setInterval(() => {
       continue;
     }
 
+    if (room.matchState === "buy" && room.buyEndAt && now >= room.buyEndAt) {
+      room.matchState = teamsReady(room) ? "live" : "waiting";
+      room.buyEndAt = 0;
+      broadcastRound(room, "Combate liberado", "Elimine a equipe adversaria.");
+    }
+
     if (room.matchState === "resetting" && room.resetAt && now >= room.resetAt) {
       resetRound(room);
     } else if (!teamsReady(room)) {
-      for (const player of room.players.values()) {
-        if (!player.alive && player.respawnAt && now >= player.respawnAt) spawnPlayer(room, player);
-      }
+      room.matchState = "waiting";
+      room.buyEndAt = 0;
     }
 
     broadcastState(room);
