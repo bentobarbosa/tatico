@@ -76,7 +76,6 @@
   const remotePlayers = new Map();
   const tracers = [];
   const particles = [];
-  const animatedProps = [];
   const streetLights = [];
   let phase = "menu";
   let round = 1;
@@ -85,6 +84,22 @@
   let messageUntil = 0;
   let roundEndTimer = 0;
   let buyCountdown = 0;
+  let gameMode = "elimination";
+
+  const BOMB_SITE = { x: 42, z: 42, halfX: 9, halfZ: 7 };
+  const BOMB_PLANT_SECONDS = 3;
+  const BOMB_DEFUSE_SECONDS = 6;
+  const BOMB_EXPLODE_SECONDS = 35;
+  const BOMB_ROUND_SECONDS = 100;
+  const bomb = {
+    state: "idle",
+    plantProgress: 0,
+    defuseProgress: 0,
+    explodeTimer: 0,
+    roundTimer: 0,
+    mesh: null,
+    light: null
+  };
 
   const ITEMS = {
     hpkit:    { name: "Kit de Vida",   price: 400, desc: "Restaura 50 HP · tecla V" },
@@ -153,7 +168,8 @@
     lastLookY: 0,
     firing: false,
     jump: false,
-    slow: false
+    slow: false,
+    plant: false
   };
 
   function weapon() {
@@ -236,12 +252,11 @@
     roof: makeMat(0x564337, 0.78),
     windowLit: makeMat(0xd9c06a, 0.35),
     trim: makeMat(0xc6b992, 0.7),
-    foliage: makeMat(0x4f7b45, 0.86),
-    soil: makeMat(0x37291d, 0.95),
-    cone: makeMat(0xe7782d, 0.7),
-    coneStripe: makeGlowMat(0xfff0d2),
     lanePaint: makeGlowMat(0xf4e7bd),
-    puddle: new THREE.MeshStandardMaterial({ color: 0x1a3440, roughness: 0.18, metalness: 0.38, transparent: true, opacity: 0.58 }),
+    roadEdge: new THREE.MeshBasicMaterial({ color: 0xd8cfad, transparent: true, opacity: 0.26, depthWrite: false }),
+    crateBand: makeMat(0x3d3326, 0.74),
+    bombCore: makeMat(0x1a1d18, 0.62, { metalness: 0.3 }),
+    bombScreen: makeGlowMat(0xd7ff6e),
     accentBlue: makeGlowMat(0x74c7ff),
     accentRed: makeGlowMat(0xff6d5d),
     accentGold: makeGlowMat(0xffd76d),
@@ -332,19 +347,6 @@
       viewModel.userData.flash.visible = false;
       viewModel.userData.flashLight.intensity = 0;
     }
-    const t = performance.now() * 0.001;
-    for (const item of animatedProps) {
-      if (item.type === "dust") {
-        const positions = item.points.geometry.attributes.position.array;
-        const base = item.points.userData.baseY;
-        for (let i = 0; i < positions.length; i += 3) {
-          positions[i] = base[i] + Math.sin(t * 0.25 + i * 0.13) * 0.1;
-          positions[i + 1] = base[i + 1] + Math.sin(t * 0.7 + i) * 0.08;
-        }
-        item.points.geometry.attributes.position.needsUpdate = true;
-        item.points.rotation.y = Math.sin(t * 0.05) * 0.012;
-      }
-    }
   }
 
   function addBox(x, z, w, d, h, mat, label = "parede") {
@@ -422,6 +424,23 @@
     line.position.copy(mesh.position);
     scene.add(line);
     mesh.userData.edge = line;
+    const bands = new THREE.Group();
+    [0.48, h - 0.38].forEach(y => {
+      [-1, 1].forEach(side => {
+        const front = new THREE.Mesh(new THREE.BoxGeometry(size + 0.06, 0.1, 0.08), mats.crateBand);
+        front.position.set(0, y - h / 2, side * (size / 2 + 0.045));
+        bands.add(front);
+        const sideBand = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, size + 0.06), mats.crateBand);
+        sideBand.position.set(side * (size / 2 + 0.045), y - h / 2, 0);
+        bands.add(sideBand);
+      });
+    });
+    const labelPlate = new THREE.Mesh(new THREE.BoxGeometry(size * 0.42, 0.34, 0.07), mats.metal);
+    labelPlate.position.set(0, 0.04, -size / 2 - 0.055);
+    bands.add(labelPlate);
+    bands.position.copy(mesh.position);
+    scene.add(bands);
+    mesh.userData.bands = bands;
     const wall = walls[walls.length - 1];
     if (wall) wall.climbable = true;
     return mesh;
@@ -438,6 +457,18 @@
       rib.position.x = i;
       group.add(rib);
     }
+    [-1.68, 1.68].forEach(zSide => {
+      [-1.16, 1.16].forEach(y => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(10.12, 0.08, 0.08), mats.crateBand);
+        rail.position.set(0, y, zSide);
+        group.add(rail);
+      });
+      [-4.6, 4.6].forEach(xSide => {
+        const lockBar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.55, 0.08), mats.metal);
+        lockBar.position.set(xSide, 0, zSide);
+        group.add(lockBar);
+      });
+    });
     group.position.set(x, 1.65, z);
     group.rotation.y = rot;
     scene.add(group);
@@ -482,128 +513,10 @@
     streetLights.push({ light, glow, pool });
   }
 
-  function addPuddle(x, z, rx = 2, rz = 0.9, rot = 0) {
-    const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 28), mats.puddle);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.rotation.z = rot;
-    mesh.scale.set(rx, rz, 1);
-    mesh.position.set(x, 0.048, z);
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    return mesh;
-  }
-
-  function addPlanter(x, z, rot = 0) {
-    const group = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.62, 1.15), mats.crate);
-    base.position.y = 0.31;
-    base.castShadow = true;
-    base.receiveShadow = true;
-    group.add(base);
-
-    const soil = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.12, 0.86), mats.soil);
-    soil.position.y = 0.66;
-    group.add(soil);
-
-    for (let i = 0; i < 5; i++) {
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.22 + Math.random() * 0.1, 0.8 + Math.random() * 0.45, 6), mats.foliage);
-      leaf.position.set(-1.25 + i * 0.62, 1.08, rand(-0.18, 0.18));
-      leaf.rotation.z = rand(-0.22, 0.22);
-      leaf.rotation.y = rand(0, Math.PI);
-      leaf.castShadow = true;
-      group.add(leaf);
-    }
-
-    group.position.set(x, 0, z);
-    group.rotation.y = rot;
-    scene.add(group);
-    return group;
-  }
-
-  function addTrafficCone(x, z, rot = 0) {
-    const group = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.12, 4), mats.black);
-    base.position.y = 0.06;
-    base.rotation.y = Math.PI / 4;
-    base.castShadow = true;
-    group.add(base);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.78, 18), mats.cone);
-    cone.position.y = 0.5;
-    cone.castShadow = true;
-    group.add(cone);
-    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.23, 0.08, 18), mats.coneStripe);
-    stripe.position.y = 0.42;
-    group.add(stripe);
-    group.position.set(x, 0.02, z);
-    group.rotation.y = rot;
-    scene.add(group);
-    return group;
-  }
-
-  function addPalletStack(x, z, rot = 0) {
-    const group = new THREE.Group();
-    for (let level = 0; level < 3; level++) {
-      for (let i = 0; i < 3; i++) {
-        const board = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.16, 0.28), mats.crate);
-        board.position.set(0, 0.13 + level * 0.22, -0.46 + i * 0.46);
-        board.castShadow = true;
-        group.add(board);
-      }
-    }
-    group.position.set(x, 0, z);
-    group.rotation.y = rot;
-    scene.add(group);
-    return group;
-  }
-
-  function addGrassPatches() {
-    const count = 180;
-    const geo = new THREE.ConeGeometry(0.055, 0.48, 5);
-    const inst = new THREE.InstancedMesh(geo, mats.foliage, count);
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < count; i++) {
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const x = rand(-WORLD_W / 2 + 7, WORLD_W / 2 - 7);
-      const z = side * rand(14, WORLD_D / 2 - 8);
-      dummy.position.set(x, 0.24, z);
-      dummy.rotation.set(rand(-0.15, 0.15), rand(0, Math.PI * 2), rand(-0.15, 0.15));
-      const s = rand(0.75, 1.55);
-      dummy.scale.set(s, rand(0.75, 1.7), s);
-      dummy.updateMatrix();
-      inst.setMatrixAt(i, dummy.matrix);
-    }
-    inst.castShadow = true;
-    inst.receiveShadow = true;
-    scene.add(inst);
-    return inst;
-  }
-
-  function addAmbientDust() {
-    const count = 220;
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = rand(-WORLD_W / 2 + 4, WORLD_W / 2 - 4);
-      positions[i * 3 + 1] = rand(1.4, 8.5);
-      positions[i * 3 + 2] = rand(-WORLD_D / 2 + 4, WORLD_D / 2 - 4);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xffead0,
-      size: 0.13,
-      transparent: true,
-      opacity: 0.28,
-      depthWrite: false,
-      sizeAttenuation: true
-    });
-    const points = new THREE.Points(geo, mat);
-    points.userData.baseY = positions.slice();
-    scene.add(points);
-    animatedProps.push({ type: "dust", points });
-    return points;
-  }
-
   function addScenicDetails() {
+    addGroundLayer(0, -9.2, WORLD_W * 0.72, 0.18, mats.roadEdge, 0, 0.038);
+    addGroundLayer(0, 9.2, WORLD_W * 0.72, 0.18, mats.roadEdge, 0, 0.038);
+
     for (let x = -54; x <= 54; x += 18) {
       addGroundMark(x, 0, 7.4, 0.22, 0xf6e8bc, 0, 0.42);
     }
@@ -613,30 +526,82 @@
       }
     });
 
-    addPuddle(-27, -3.7, 2.7, 0.9, 0.18);
-    addPuddle(22, 4.6, 2.2, 0.76, -0.28);
-    addPuddle(-62, 39, 1.8, 0.62, 0.55);
-    addPuddle(61, -34, 1.6, 0.58, -0.38);
-
-    addPlanter(-69, 22, Math.PI / 2);
-    addPlanter(-66, -31, Math.PI / 2);
-    addPlanter(68, 23, -Math.PI / 2);
-    addPlanter(68, -31, -Math.PI / 2);
-    addPlanter(-33, -17, 0);
-    addPlanter(33, 18, Math.PI);
-
     [
-      [-34, 4.8, 0.2], [-30, 4.2, -0.4], [33, -5.2, 0.25], [37, -5.4, -0.2],
-      [-50, -49, 0.1], [-45, -48.2, -0.2], [48, 49.4, 0.18], [53, 48.8, -0.16]
-    ].forEach(([x, z, rot]) => addTrafficCone(x, z, rot));
+      [0, 52, 46, 0.16, 0x74c7ff, 0],
+      [0, -52, 46, 0.16, 0xffbd68, 0],
+      [-18, -39, 46, 0.16, 0xffd76d, 0],
+      [18, 40, 46, 0.16, 0xffd76d, 0],
+      [-50, -18, 28, 0.12, 0x74c7ff, Math.PI / 2],
+      [50, 13, 32, 0.12, 0xff6d5d, Math.PI / 2]
+    ].forEach(([x, z, w, d, color, rot]) => addGroundMark(x, z, w, d, color, rot, 0.22));
 
-    addPalletStack(-59, 33, 0.18);
-    addPalletStack(-34, -18, Math.PI / 2);
-    addPalletStack(58, -35, -0.22);
-    addPalletStack(34, 19, Math.PI / 2);
+    const { x, z, halfX, halfZ } = BOMB_SITE;
+    addGroundMark(x, z - halfZ - 0.35, halfX * 2 + 2, 0.16, 0xff6d5d, 0, 0.42);
+    addGroundMark(x, z + halfZ + 0.35, halfX * 2 + 2, 0.16, 0xff6d5d, 0, 0.42);
+    addGroundMark(x - halfX - 0.35, z, 0.16, halfZ * 2 + 2, 0xff6d5d, 0, 0.42);
+    addGroundMark(x + halfX + 0.35, z, 0.16, halfZ * 2 + 2, 0xff6d5d, 0, 0.42);
+    for (let offset = -6; offset <= 6; offset += 3) {
+      addGroundMark(x + offset, z, 0.12, halfZ * 1.65, 0xffd76d, 0, 0.18);
+    }
+    addGroundMark(x, z, halfX * 1.55, 0.14, 0xffd76d, 0, 0.34);
+    addGroundMark(x, z, 0.14, halfZ * 1.55, 0xffd76d, 0, 0.34);
+  }
 
-    addGrassPatches();
-    addAmbientDust();
+  function createBombMesh() {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.36, 0.62), mats.bombCore);
+    body.position.y = 0.26;
+    body.castShadow = true;
+    group.add(body);
+
+    [-0.22, 0.22].forEach(z => {
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.82, 14), mats.metal);
+      tube.rotation.z = Math.PI / 2;
+      tube.position.set(0, 0.44, z);
+      tube.castShadow = true;
+      group.add(tube);
+    });
+
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 0.05), mats.bombScreen);
+    screen.position.set(0.12, 0.48, -0.34);
+    group.add(screen);
+
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mats.accentRed);
+    led.position.set(-0.3, 0.5, -0.34);
+    group.add(led);
+
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.62, 6), mats.black);
+    antenna.position.set(0.38, 0.72, 0.2);
+    antenna.rotation.z = -0.24;
+    group.add(antenna);
+
+    const light = new THREE.PointLight(0xff6d5d, 0, 6, 2);
+    light.position.set(0, 0.8, 0);
+    group.add(light);
+
+    group.visible = false;
+    group.userData.led = led;
+    group.userData.light = light;
+    scene.add(group);
+    bomb.mesh = group;
+    bomb.light = light;
+    return group;
+  }
+
+  function setBombVisible(visible, pos = null) {
+    if (!bomb.mesh) return;
+    bomb.mesh.visible = visible;
+    if (pos) bomb.mesh.position.set(pos.x, 0.06, pos.z);
+    if (!visible && bomb.light) bomb.light.intensity = 0;
+  }
+
+  function updateBombVisual() {
+    if (!bomb.mesh || bomb.state !== "planted") return;
+    const pulse = 0.5 + Math.sin(performance.now() * 0.014) * 0.5;
+    if (bomb.light) bomb.light.intensity = 0.55 + pulse * 1.15;
+    if (bomb.mesh.userData.led) {
+      bomb.mesh.userData.led.material = pulse > 0.45 ? mats.accentRed : mats.bombScreen;
+    }
   }
 
   function makeSignTexture(text, bg = "#1a1d17", fg = "#f5f2e8", accent = "#ff6d5d") {
@@ -678,6 +643,15 @@
     mesh.rotation.x = -Math.PI / 2;
     mesh.rotation.z = rot;
     mesh.position.set(x, 0.035, z);
+    scene.add(mesh);
+    return mesh;
+  }
+
+  function addGroundLayer(x, z, w, d, mat, rot = 0, y = 0.035) {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotation.z = rot;
+    mesh.position.set(x, y, z);
     scene.add(mesh);
     return mesh;
   }
@@ -904,6 +878,7 @@
     const siteText = makeSiteMarker();
     siteText.position.set(42, 0.12, 42);
     scene.add(siteText);
+    createBombMesh();
 
     [-60, -30, 0, 30, 60].forEach(x => {
       addLightPost(x, -52);
@@ -1079,8 +1054,13 @@
   }
 
   function resetPlayer() {
-    player.position.set(0, PLAYER_HEIGHT, 50);
-    player.yaw = 0;
+    if (gameMode === "bomb" && net.mode === "offline") {
+      player.position.set(0, PLAYER_HEIGHT, -50);
+      player.yaw = Math.PI;
+    } else {
+      player.position.set(0, PLAYER_HEIGHT, 50);
+      player.yaw = 0;
+    }
     player.pitch = 0;
     player.hp = 100;
     player.armor = 0;
@@ -1101,6 +1081,34 @@
   function spawnBots() {
     bots.forEach(bot => scene.remove(bot.mesh));
     bots.length = 0;
+    if (gameMode === "bomb" && net.mode === "offline") {
+      const spots = [
+        [31, 35], [43, 31], [54, 40], [36, 50],
+        [55, 27], [26, 46], [47, 52]
+      ];
+      const count = clamp(4 + Math.floor(round / 3), 4, 7);
+      for (let i = 0; i < count; i++) {
+        const [x, z] = spots[i % spots.length];
+        const bot = {
+          position: new THREE.Vector3(x + rand(-1.5, 1.5), 0, z + rand(-1.5, 1.5)),
+          yaw: rand(-Math.PI, Math.PI),
+          hp: 96 + round * 3,
+          alive: true,
+          fireCooldown: 0,
+          reloadEnd: 0,
+          ammo: round > 3 ? WEAPONS.rifle.mag : WEAPONS.smg.mag,
+          weaponId: round > 3 ? "rifle" : "smg",
+          strafe: i % 2 ? 1 : -1,
+          think: rand(0, 0.8),
+          target: new THREE.Vector3(BOMB_SITE.x + rand(-8, 8), 0, BOMB_SITE.z + rand(-6, 6)),
+          mesh: createBotMesh(mats.ct, BOT_SKINS[i % BOT_SKINS.length])
+        };
+        bot.mesh.position.copy(bot.position);
+        scene.add(bot.mesh);
+        bots.push(bot);
+      }
+      return;
+    }
     const count = clamp(3 + Math.floor(round / 2), 3, 8);
     for (let i = 0; i < count; i++) {
       const bot = {
@@ -1120,6 +1128,26 @@
       scene.add(bot.mesh);
       bots.push(bot);
     }
+  }
+
+  function resetBombObjective() {
+    bomb.state = "idle";
+    bomb.plantProgress = 0;
+    bomb.defuseProgress = 0;
+    bomb.explodeTimer = 0;
+    bomb.roundTimer = 0;
+    touchInput.plant = false;
+    setBombVisible(false);
+  }
+
+  function playerInBombSite() {
+    return Math.abs(player.position.x - BOMB_SITE.x) <= BOMB_SITE.halfX &&
+      Math.abs(player.position.z - BOMB_SITE.z) <= BOMB_SITE.halfZ;
+  }
+
+  function bombPosition() {
+    if (bomb.mesh && bomb.mesh.visible) return bomb.mesh.position;
+    return new THREE.Vector3(BOMB_SITE.x, 0, BOMB_SITE.z);
   }
 
   function equip(id) {
@@ -1242,6 +1270,7 @@
 
   function startGame() {
     net.mode = "offline";
+    gameMode = "elimination";
     disconnectOnline();
     round = 1;
     ctScore = 0;
@@ -1249,6 +1278,23 @@
     player.money = 800;
     player.owned = new Set(["pistol"]);
     player.weaponId = "pistol";
+    localStorage.setItem("taticoName", getPlayerName());
+    el("startScreen").classList.add("hidden");
+    el("buyButton").hidden = false;
+    startBuyPhase();
+  }
+
+  function startBombGame() {
+    net.mode = "offline";
+    gameMode = "bomb";
+    disconnectOnline();
+    round = 1;
+    ctScore = 0;
+    trScore = 0;
+    player.money = 1000;
+    player.owned = new Set(["pistol"]);
+    player.weaponId = "pistol";
+    resetBombObjective();
     localStorage.setItem("taticoName", getPlayerName());
     el("startScreen").classList.add("hidden");
     el("buyButton").hidden = false;
@@ -1316,6 +1362,7 @@
     }
 
     net.mode = "online";
+    gameMode = "elimination";
     disconnectOnline();
     net.mode = "online";
     net.pendingRoomMode = roomMode;
@@ -1600,10 +1647,11 @@
   function startBuyPhase() {
     phase = "buy";
     buyCountdown = 10;
+    if (gameMode === "bomb" && net.mode === "offline") resetBombObjective();
     resetPlayer();
     spawnBots();
     showBuy(true);
-    setMessage("Rodada " + round, "10 segundos para comprar.", 1600);
+    setMessage("Rodada " + round, gameMode === "bomb" ? "Compre e prepare a entrada no site A." : "10 segundos para comprar.", 1600);
   }
 
   function startRound() {
@@ -1616,21 +1664,30 @@
     buyCountdown = 0;
     showBuy(false);
     lockPointer();
-    setMessage("Rodada " + round, "Use cobertura e limpe o mapa.", 1300);
+    if (gameMode === "bomb") {
+      bomb.state = "carrying";
+      bomb.roundTimer = BOMB_ROUND_SECONDS;
+      bomb.plantProgress = 0;
+      bomb.defuseProgress = 0;
+      setMessage("Modo bomba", "Vá ao site A e segure E para plantar.", 1600);
+    } else {
+      setMessage("Rodada " + round, "Use cobertura e limpe o mapa.", 1300);
+    }
   }
 
-  function endRound(ctWon) {
+  function endRound(ctWon, reason = "") {
     if (phase === "round_end") return;
     phase = "round_end";
     roundEndTimer = 1.9;
+    const playerWon = gameMode === "bomb" && net.mode === "offline" ? !ctWon : ctWon;
+    if (playerWon) player.money += 2400 + player.kills * 150;
+    else player.money += 1200;
     if (ctWon) {
       ctScore++;
-      player.money += 2400 + player.kills * 150;
-      setMessage("CT venceu", "+ dinheiro de rodada", 1800);
+      setMessage("CT venceu", reason || "+ dinheiro de rodada", 1800);
     } else {
       trScore++;
-      player.money += 1200;
-      setMessage("TR venceu", "Reagrupe e compre melhor.", 1800);
+      setMessage("TR venceu", reason || "Reagrupe e compre melhor.", 1800);
     }
   }
 
@@ -2040,7 +2097,8 @@
     player.hp = Math.max(0, player.hp - amount);
     if (player.hp <= 0) {
       player.alive = false;
-      endRound(false);
+      if (gameMode === "bomb" && net.mode === "offline") endRound(true, "O atacante caiu antes de cumprir o objetivo.");
+      else endRound(false);
     }
     updateHud();
   }
@@ -2153,6 +2211,7 @@
     if (phase !== "live") return;
     const playerChest = player.position.clone();
     playerChest.y = 1.2;
+    const objectiveTarget = gameMode === "bomb" && bomb.state === "planted" ? bombPosition().clone() : null;
     for (const bot of bots) {
       if (!bot.alive) continue;
       bot.think -= dt;
@@ -2179,13 +2238,22 @@
         moveZ += side.z * 0.42;
         botShoot(bot, botEye, playerChest);
       } else {
-        if (bot.think <= 0) {
+        if (objectiveTarget) {
+          bot.target = objectiveTarget.clone();
+          bot.think = Math.max(bot.think, 0.25);
+        } else if (bot.think <= 0) {
           bot.think = rand(0.8, 1.7);
-          bot.target = new THREE.Vector3(rand(-55, 55), 0, rand(-55, 55));
+          if (gameMode === "bomb") {
+            bot.target = new THREE.Vector3(BOMB_SITE.x + rand(-10, 10), 0, BOMB_SITE.z + rand(-8, 8));
+          } else {
+            bot.target = new THREE.Vector3(rand(-55, 55), 0, rand(-55, 55));
+          }
         }
         const target = bot.target || new THREE.Vector3(0, 0, 0);
         const d = target.clone().sub(bot.position);
-        if (d.length() > 2) {
+        if (objectiveTarget && d.length() <= 2.4) {
+          bot.yaw = Math.atan2(-d.x, -d.z);
+        } else if (d.length() > 2) {
           d.normalize();
           moveX += d.x;
           moveZ += d.z;
@@ -2262,8 +2330,82 @@
     viewModel.rotation.x = -0.05 + Math.abs(bob) * 0.012;
   }
 
+  function updateBombMode(dt) {
+    const aliveBots = bots.filter(bot => bot.alive);
+
+    if (bomb.state === "carrying") {
+      bomb.roundTimer = Math.max(0, bomb.roundTimer - dt);
+      if (!aliveBots.length) {
+        endRound(false, "Defesa eliminada.");
+        return;
+      }
+      if (bomb.roundTimer <= 0) {
+        endRound(true, "O tempo acabou.");
+        return;
+      }
+
+      const planting = player.alive && playerInBombSite() && (keys.KeyE || touchInput.plant);
+      if (planting) {
+        bomb.plantProgress = Math.min(BOMB_PLANT_SECONDS, bomb.plantProgress + dt);
+        if (bomb.plantProgress >= BOMB_PLANT_SECONDS) {
+          const plantedPos = new THREE.Vector3(
+            clamp(player.position.x, BOMB_SITE.x - BOMB_SITE.halfX + 1, BOMB_SITE.x + BOMB_SITE.halfX - 1),
+            0,
+            clamp(player.position.z, BOMB_SITE.z - BOMB_SITE.halfZ + 1, BOMB_SITE.z + BOMB_SITE.halfZ - 1)
+          );
+          bomb.state = "planted";
+          bomb.explodeTimer = BOMB_EXPLODE_SECONDS;
+          bomb.defuseProgress = 0;
+          bomb.plantProgress = 0;
+          setBombVisible(true, plantedPos);
+          setMessage("Bomba plantada", "Defenda o site A ate explodir.", 1800);
+        }
+      } else {
+        bomb.plantProgress = Math.max(0, bomb.plantProgress - dt * 1.8);
+      }
+      return;
+    }
+
+    if (bomb.state !== "planted") return;
+
+    bomb.explodeTimer = Math.max(0, bomb.explodeTimer - dt);
+    if (bomb.explodeTimer <= 0) {
+      endRound(false, "Bomba explodiu.");
+      return;
+    }
+    if (!aliveBots.length) {
+      endRound(false, "Defensores eliminados.");
+      return;
+    }
+
+    const bombPos = bombPosition();
+    let defuser = null;
+    let bestDist = Infinity;
+    for (const bot of aliveBots) {
+      const dist = bot.position.distanceTo(bombPos);
+      if (dist < 3.2 && dist < bestDist) {
+        defuser = bot;
+        bestDist = dist;
+      }
+    }
+
+    if (defuser) {
+      const toBomb = bombPos.clone().sub(defuser.position);
+      defuser.yaw = Math.atan2(-toBomb.x, -toBomb.z);
+      bomb.defuseProgress = Math.min(BOMB_DEFUSE_SECONDS, bomb.defuseProgress + dt);
+      if (bomb.defuseProgress >= BOMB_DEFUSE_SECONDS) {
+        endRound(true, "Bomba desarmada.");
+      }
+    } else {
+      bomb.defuseProgress = Math.max(0, bomb.defuseProgress - dt * 1.25);
+    }
+  }
+
   function updateRound(dt) {
-    if (phase === "live" && player.alive && bots.every(bot => !bot.alive)) endRound(true);
+    if (phase === "live") {
+      if (gameMode === "bomb" && net.mode === "offline") updateBombMode(dt);
+      else if (player.alive && bots.every(bot => !bot.alive)) endRound(true);
+    }
     if (phase === "round_end") {
       roundEndTimer -= dt;
       if (roundEndTimer <= 0) {
@@ -2282,6 +2424,19 @@
     if (buyCountdown <= 0) startRound();
   }
 
+  function objectiveText() {
+    if (net.mode === "online") return phase === "warmup" ? "Aquecimento" : phase === "buy" ? "Comprar" : "4x4";
+    if (gameMode !== "bomb") return phase === "buy" ? "Comprar" : "Eliminar";
+    if (phase === "buy") return "Comprar";
+    if (phase === "round_end") return "Reset";
+    if (bomb.state === "planted") {
+      if (bomb.defuseProgress > 0) return "Defuse " + Math.ceil(BOMB_DEFUSE_SECONDS - bomb.defuseProgress) + "s";
+      return "Bomba " + Math.ceil(bomb.explodeTimer) + "s";
+    }
+    if (bomb.plantProgress > 0) return "Plantando " + Math.ceil(BOMB_PLANT_SECONDS - bomb.plantProgress) + "s";
+    return playerInBombSite() ? "Segure E" : "Site A";
+  }
+
   function updateHud() {
     const hpVal = Math.ceil(player.hp);
     const armorVal = Math.ceil(player.armor);
@@ -2294,9 +2449,15 @@
     el("weapon").textContent = weapon().name;
     el("ammo").textContent = player.reloading ? "recarregando" : player.ammo + "/" + weapon().mag;
     el("money").textContent = "$" + player.money;
+    const objective = el("objective");
+    if (objective) objective.textContent = objectiveText();
     el("ctScore").textContent = "CT " + ctScore;
     el("trScore").textContent = trScore + " TR";
-    el("roundLabel").textContent = net.mode === "online" ? "4x4" : phase === "buy" && buyCountdown > 0 ? Math.ceil(buyCountdown) + "s" : "R" + round;
+    el("roundLabel").textContent = net.mode === "online" ? "4x4" :
+      phase === "buy" && buyCountdown > 0 ? Math.ceil(buyCountdown) + "s" :
+      gameMode === "bomb" && phase === "live" && bomb.state === "planted" ? Math.ceil(bomb.explodeTimer) + "s" :
+      gameMode === "bomb" && phase === "live" ? Math.ceil(bomb.roundTimer) + "s" :
+      "R" + round;
     updateSessionBanner();
   }
 
@@ -2306,7 +2467,8 @@
     const w = c.width;
     const h = c.height;
     const pad = 10;
-    const teamColor = net.mode === "online" && net.team === "TR" ? "#f2b85b" : "#73b9ff";
+    const teamColor = net.mode === "online" ? (net.team === "TR" ? "#f2b85b" : "#73b9ff") :
+      gameMode === "bomb" ? "#f2b85b" : "#73b9ff";
     const scale = Math.min((w - pad * 2) / WORLD_W, (h - pad * 2) / WORLD_D);
     const worldLeft = -WORLD_W * scale / 2;
     const worldTop = -WORLD_D * scale / 2;
@@ -2372,6 +2534,17 @@
     fillRectWorld(0, 51, 40, 8, "rgba(116, 199, 255, 0.15)");
     fillRectWorld(0, -51, 40, 8, "rgba(242, 184, 91, 0.15)");
 
+    if (gameMode === "bomb" && bomb.state === "planted" && bomb.mesh) {
+      const pulse = 3.8 + Math.sin(performance.now() * 0.014) * 1.2;
+      ctx.fillStyle = "rgba(255, 109, 93, 0.95)";
+      ctx.beginPath();
+      ctx.arc(mapX(bomb.mesh.position.x), mapZ(bomb.mesh.position.z), pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 215, 109, 0.82)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
     for (const wall of walls) {
       ctx.fillStyle = wallColor(wall);
       if ((wall.label || "").includes("barril")) {
@@ -2418,6 +2591,11 @@
     el("touchBuy").hidden = false;
     el("touchWalk").classList.toggle("active", touchInput.slow);
     el("touchJump").classList.toggle("active", touchInput.jump);
+    const bombButton = el("touchBomb");
+    if (bombButton) {
+      bombButton.hidden = !(gameMode === "bomb" && phase === "live" && bomb.state === "carrying");
+      bombButton.classList.toggle("active", touchInput.plant || bomb.plantProgress > 0);
+    }
   }
 
   function resetTouchStick() {
@@ -2443,6 +2621,7 @@
     updateParticles(dt);
     updateBuyCountdown(dt);
     updateViewEffects();
+    updateBombVisual();
     updateCamera();
     updateHud();
     updateTouchControls();
@@ -2596,6 +2775,7 @@
       mouse.lookHeld = false;
       mouse.freeLook = false;
       touchInput.firing = false;
+      touchInput.plant = false;
       resetTouchStick();
     });
     renderer.domElement.addEventListener("contextmenu", event => event.preventDefault());
@@ -2606,6 +2786,7 @@
       }
     });
     el("startButton").addEventListener("click", startGame);
+    el("bombModeButton").addEventListener("click", startBombGame);
     el("onlineButton").addEventListener("click", () => startOnlineGame("quick"));
     el("createRoomButton").addEventListener("click", () => startOnlineGame("create"));
     el("joinRoomButton").addEventListener("click", () => startOnlineGame("join"));
@@ -2713,6 +2894,17 @@
     el("touchBuy").addEventListener("click", () => {
       if (phase === "buy") showBuy(true);
       else setMessage("Compra fechada", "So da para comprar antes da rodada.", 1100);
+    });
+    el("touchBomb").addEventListener("pointerdown", event => {
+      touchInput.used = true;
+      touchInput.plant = true;
+      el("touchBomb").setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(type => {
+      el("touchBomb").addEventListener(type, () => {
+        touchInput.plant = false;
+      });
     });
     el("touchWalk").addEventListener("click", () => {
       touchInput.slow = !touchInput.slow;
