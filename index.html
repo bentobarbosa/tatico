@@ -4,14 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Tatico 3D</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
   <div id="loading">Carregando Tatico 3D...</div>
 
   <main id="gameShell">
     <div id="hud">
-      <div class="hud-card hp"><span>Vida</span><strong id="hp">100</strong></div>
+      <div class="hud-bars">
+        <div class="bar-row">
+          <span class="bar-icon">HP</span>
+          <div class="bar-track"><div id="hpBar" class="bar hp-bar"></div></div>
+          <strong id="hp">100</strong>
+        </div>
+        <div class="bar-row">
+          <span class="bar-icon">ES</span>
+          <div class="bar-track"><div id="armorBar" class="bar armor-bar"></div></div>
+          <strong id="armor">0</strong>
+        </div>
+        <div class="kit-row">
+          <span class="kit-badge" title="Kit Vida (V)">V ×<span id="hpKits">0</span></span>
+          <span class="kit-badge" title="Kit Escudo (B)">ES ×<span id="armorKits">0</span></span>
+        </div>
+      </div>
       <div class="hud-card"><span>Arma</span><strong id="weapon">Pistola</strong></div>
       <div class="hud-card"><span>Munição</span><strong id="ammo">12/12</strong></div>
       <div class="hud-card money"><span>Dinheiro</span><strong id="money">$800</strong></div>
@@ -37,8 +52,20 @@
     <div id="crosshair" class="crosshair-pro" aria-label="Mira">
       <span></span><span></span><span></span><span></span><i></i>
     </div>
+    <div id="lockPrompt" hidden>
+      <div class="lock-inner">
+        <p>Clique para jogar</p>
+        <small>Mouse travado · ESC para soltar</small>
+      </div>
+    </div>
+    <div id="chatPanel">
+      <div id="chatMessages"></div>
+      <form id="chatForm" hidden autocomplete="off">
+        <input id="chatInput" maxlength="80" placeholder="Mensagem… (Enter envia · ESC cancela)">
+      </form>
+    </div>
     <button id="settingsButton" type="button">Opções (C)</button>
-    <button id="buyButton" type="button">Comprar (B)</button>
+    <button id="buyButton" type="button">Comprar (L)</button>
     <div id="quickSettings" class="quick-settings" hidden>
       <div class="quick-head">
         <strong>Jogo</strong>
@@ -49,6 +76,11 @@
         <button class="crosshair-option crosshair-preview-pro" type="button" data-crosshair="pro" aria-label="Mira verde com aro"></button>
         <button class="crosshair-option crosshair-preview-yellow" type="button" data-crosshair="yellow" aria-label="Mira amarela"></button>
         <button class="crosshair-option crosshair-preview-cyan" type="button" data-crosshair="cyan" aria-label="Mira ciano"></button>
+      </div>
+      <span>Sensibilidade</span>
+      <div class="sens-row">
+        <input type="range" id="sensSlider" min="0.2" max="5" step="0.1" value="1">
+        <span id="sensValue">1.0×</span>
       </div>
       <span>Ambiente</span>
       <div class="time-options">
@@ -80,7 +112,8 @@
           <p class="lead">Entre em uma arena tática, treine contra bots ou monte uma sala online 4x4 com dois times.</p>
           <div id="manualPanel" class="controls">
             <p><b>WASD</b> mover · <b>Mouse</b> mirar · <b>Clique</b> atirar</p>
-            <p><b>Espaço</b> pular · <b>R</b> recarregar · <b>B</b> comprar · <b>Shift</b> andar devagar</p>
+            <p><b>Espaço</b> pular · <b>R</b> recarregar · <b>L</b> comprar · <b>Shift</b> andar devagar</p>
+            <p><b>1–5</b> trocar arma · <b>V</b> usar kit de vida · <b>B</b> usar kit de escudo</p>
             <p><b>Touchpad</b> clique uma vez no jogo e mova para mirar</p>
             <p><b>Dica</b> use cobertura, olhe o radar e troque de posição depois de atirar.</p>
           </div>
@@ -163,6 +196,8 @@
         <strong id="buyMoney">$800</strong>
       </div>
       <div id="weaponCards" class="weapon-grid"></div>
+      <div class="buy-divider"><span>Itens</span></div>
+      <div id="itemCards" class="item-grid"></div>
       <div class="buy-actions">
         <button id="closeBuy" type="button">Voltar</button>
         <button id="playRound" class="primary" type="button">Entrar na rodada</button>
@@ -171,6 +206,6 @@
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="game.js?v=7"></script>
+  <script src="game.js?v=13"></script>
 </body>
 </html>

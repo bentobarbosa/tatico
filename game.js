@@ -22,17 +22,17 @@
   const ONLINE_SEND_MS = 55;
 
   const WEAPONS = {
-    pistol: { name: "Pistola", price: 0, damage: 28, mag: 12, fireMs: 260, reloadMs: 1200, spread: 0, pellets: 1, range: 70 },
-    smg: { name: "SMG", price: 1000, damage: 18, mag: 30, fireMs: 88, reloadMs: 1700, spread: 0, pellets: 1, range: 60 },
-    shotgun: { name: "Escopeta", price: 1300, damage: 13, mag: 8, fireMs: 720, reloadMs: 2400, spread: 0.12, pellets: 8, range: 38 },
-    rifle: { name: "Fuzil", price: 2500, damage: 34, mag: 30, fireMs: 120, reloadMs: 2200, spread: 0, pellets: 1, range: 85 },
-    sniper: { name: "Sniper", price: 4200, damage: 120, mag: 5, fireMs: 1350, reloadMs: 2800, spread: 0, pellets: 1, range: 115 }
+    pistol:  { name: "Glock-18",    price: 0,    damage: 28,  mag: 15, fireMs: 240,  reloadMs: 1200, spread: 0,    pellets: 1, range: 70  },
+    smg:     { name: "MP5",         price: 1000, damage: 18,  mag: 30, fireMs: 82,   reloadMs: 1700, spread: 0,    pellets: 1, range: 60  },
+    shotgun: { name: "SPAS-12",     price: 1300, damage: 14,  mag: 8,  fireMs: 700,  reloadMs: 2400, spread: 0.12, pellets: 8, range: 38  },
+    rifle:   { name: "AK-47",       price: 2500, damage: 34,  mag: 30, fireMs: 110,  reloadMs: 2200, spread: 0,    pellets: 1, range: 85  },
+    sniper:  { name: "Barrett M82", price: 4200, damage: 120, mag: 5,  fireMs: 1350, reloadMs: 2800, spread: 0,    pellets: 1, range: 115 }
   };
   const WEAPON_ORDER = ["pistol", "smg", "shotgun", "rifle", "sniper"];
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x171913);
-  scene.fog = new THREE.Fog(0x171913, 58, 176);
+  scene.background = new THREE.Color(0x6aa8d4);
+  scene.fog = new THREE.Fog(0x8ec4e8, 55, 165);
 
   const camera = new THREE.PerspectiveCamera(73, window.innerWidth / window.innerHeight, 0.05, 220);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -50,9 +50,9 @@
   document.body.appendChild(renderer.domElement);
   scene.add(camera);
 
-  const hemi = new THREE.HemisphereLight(0xdde8ff, 0x3e4631, 1.78);
+  const hemi = new THREE.HemisphereLight(0xc9e8ff, 0x5a6e3e, 2.1);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1d4, 2.22);
+  const sun = new THREE.DirectionalLight(0xffe8b0, 2.8);
   sun.position.set(-38, 56, 24);
   sun.castShadow = true;
   sun.shadow.camera.left = -100;
@@ -86,11 +86,21 @@
   let roundEndTimer = 0;
   let buyCountdown = 0;
 
+  const ITEMS = {
+    hpkit:    { name: "Kit de Vida",   price: 400, desc: "Restaura 50 HP · tecla V" },
+    armorkit: { name: "Kit de Escudo", price: 650, desc: "100 de escudo · tecla B" },
+    ammo:     { name: "Munição",       price: 200, desc: "Reabastece o pente atual" },
+  };
+  const ITEM_ORDER = ["hpkit", "armorkit", "ammo"];
+
   const player = {
     position: new THREE.Vector3(0, PLAYER_HEIGHT, 50),
     yaw: 0,
     pitch: 0,
     hp: 100,
+    armor: 0,
+    hpKits: 0,
+    armorKits: 0,
     money: 800,
     kills: 0,
     weaponId: "pistol",
@@ -126,6 +136,9 @@
   };
 
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
+  let sensMult = parseFloat(localStorage.getItem("taticoSens") || "1");
+  let intentionalExit = false;
+  let chatOpen = false;
   const crosshairStyles = ["pro", "yellow", "cyan"];
   let crosshairStyle = localStorage.getItem("taticoCrosshair") || "pro";
   const timeModes = ["day", "night"];
@@ -203,60 +216,6 @@
     return new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
   }
 
-  function makeSkyTexture(night = false) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 32;
-    canvas.height = 512;
-    const ctx = canvas.getContext("2d");
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    if (night) {
-      gradient.addColorStop(0, "#071226");
-      gradient.addColorStop(0.46, "#0b1a28");
-      gradient.addColorStop(1, "#151812");
-    } else {
-      gradient.addColorStop(0, "#7bb3d8");
-      gradient.addColorStop(0.48, "#d5b676");
-      gradient.addColorStop(1, "#25271d");
-    }
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (night) {
-      ctx.fillStyle = "rgba(255,255,225,0.9)";
-      for (let i = 0; i < 80; i++) {
-        const x = Math.random() * canvas.width;
-        const y = Math.random() * canvas.height * 0.5;
-        ctx.globalAlpha = 0.25 + Math.random() * 0.65;
-        ctx.fillRect(x, y, 1, 1);
-      }
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.fillStyle = "rgba(255,255,255,0.08)";
-      for (let y = 42; y < canvas.height * 0.62; y += 42) {
-        ctx.fillRect(0, y, canvas.width, 2);
-      }
-    }
-    const texture = new THREE.CanvasTexture(canvas);
-    if ("colorSpace" in texture) texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
-  }
-
-  function createSkyDome() {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(190, 32, 16),
-      new THREE.MeshBasicMaterial({ map: makeSkyTexture(false), side: THREE.BackSide, depthWrite: false })
-    );
-    mesh.renderOrder = -20;
-    return mesh;
-  }
-
-  function updateSkyDome(night) {
-    if (!skyDome) return;
-    const oldMap = skyDome.material.map;
-    skyDome.material.map = makeSkyTexture(night);
-    skyDome.material.needsUpdate = true;
-    oldMap?.dispose?.();
-  }
-
   const mats = {
     floor: makeTexturedMat(0x4b5a39, 0.9, ["#4b5a39", "#3c472f", "#66734d", "#2f3828"], 18, 14),
     wall: makeTexturedMat(0x8c8a7e, 0.86, ["#8c8a7e", "#737064", "#aaa28f", "#5e6257"], 4, 5),
@@ -281,7 +240,7 @@
     soil: makeMat(0x37291d, 0.95),
     cone: makeMat(0xe7782d, 0.7),
     coneStripe: makeGlowMat(0xfff0d2),
-    lanePaint: makeGlowMat(0xf4e7bd, 0.7),
+    lanePaint: makeGlowMat(0xf4e7bd),
     puddle: new THREE.MeshStandardMaterial({ color: 0x1a3440, roughness: 0.18, metalness: 0.38, transparent: true, opacity: 0.58 }),
     accentBlue: makeGlowMat(0x74c7ff),
     accentRed: makeGlowMat(0xff6d5d),
@@ -289,9 +248,6 @@
     lampGlow: new THREE.MeshBasicMaterial({ color: 0xffdf9c, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
     glass: new THREE.MeshStandardMaterial({ color: 0x8dc3d6, roughness: 0.22, metalness: 0.05, transparent: true, opacity: 0.42 })
   };
-
-  const skyDome = createSkyDome();
-  scene.add(skyDome);
 
   const viewModel = createViewModel();
   camera.add(viewModel);
@@ -998,13 +954,18 @@
     return group;
   }
 
-  function createBotMesh(colorMat) {
+  const BOT_SKINS = [0xd4a07a, 0xc08850, 0xf0c8a0, 0x8a6040, 0x6b4530, 0xe8b890];
+
+  function createBotMesh(colorMat, skinHex) {
     const group = new THREE.Group();
 
     const uniform = colorMat;
-    const skin = makeMat(0xc99b72, 0.72);
+    const skin = makeMat(skinHex ?? 0xc99b72, 0.68);
     const boot = makeMat(0x171915, 0.78);
     const gear = makeMat(0x242822, 0.7);
+    const darkSkin = makeMat(skinHex ? skinHex * 0.7 : 0x8a6845, 0.7);
+    const eyeWhite = makeMat(0xf0ece0, 0.5);
+    const eyePupil = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3 });
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.43, 0.74, 8, 14), uniform);
     torso.position.y = 1.18;
@@ -1052,10 +1013,40 @@
     neck.castShadow = true;
     group.add(neck);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 18, 14), skin);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 20, 16), skin);
     head.position.y = 1.98;
     head.castShadow = true;
     group.add(head);
+
+    // jaw / chin
+    const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 10), skin);
+    jaw.scale.set(0.9, 0.72, 0.88);
+    jaw.position.set(0, 1.73, -0.06);
+    group.add(jaw);
+
+    // eyes — white + pupil
+    [-1, 1].forEach(side => {
+      const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), eyeWhite);
+      eyeW.position.set(side * 0.12, 1.99, -0.28);
+      group.add(eyeW);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), eyePupil);
+      pupil.position.set(side * 0.12, 1.99, -0.31);
+      group.add(pupil);
+      // brow
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.022, 0.018), darkSkin);
+      brow.position.set(side * 0.12, 2.055, -0.295);
+      group.add(brow);
+    });
+
+    // nose
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.06), skin);
+    nose.position.set(0, 1.95, -0.31);
+    group.add(nose);
+
+    // mouth line
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.018, 0.018), darkSkin);
+    mouth.position.set(0, 1.89, -0.298);
+    group.add(mouth);
 
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 18, 8, 0, Math.PI * 2, 0, Math.PI * 0.56), gear);
     helmet.position.y = 2.04;
@@ -1065,6 +1056,13 @@
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.05), mats.glass);
     visor.position.set(0, 1.98, -0.29);
     group.add(visor);
+
+    // ear flaps on helmet
+    [-1, 1].forEach(side => {
+      const earFlap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.22), gear);
+      earFlap.position.set(side * 0.33, 1.96, 0.04);
+      group.add(earFlap);
+    });
 
     const gun = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.95), mats.black);
     gun.position.set(0.08, 1.18, -0.83);
@@ -1085,6 +1083,9 @@
     player.yaw = 0;
     player.pitch = 0;
     player.hp = 100;
+    player.armor = 0;
+    player.hpKits = 0;
+    player.armorKits = 0;
     player.kills = 0;
     player.alive = true;
     player.velocityY = 0;
@@ -1103,7 +1104,7 @@
     const count = clamp(3 + Math.floor(round / 2), 3, 8);
     for (let i = 0; i < count; i++) {
       const bot = {
-        position: new THREE.Vector3(-25 + i * 7, 0, -50 + (i % 2) * 5),
+        position: new THREE.Vector3(-30 + i * 12, 0, -20 + (i % 3) * 10),
         yaw: 0,
         hp: 92 + round * 4,
         alive: true,
@@ -1113,7 +1114,7 @@
         weaponId: round > 4 ? "rifle" : "smg",
         strafe: i % 2 ? 1 : -1,
         think: rand(0, 1),
-        mesh: createBotMesh(mats.tr)
+        mesh: createBotMesh(mats.tr, BOT_SKINS[i % BOT_SKINS.length])
       };
       bot.mesh.position.copy(bot.position);
       scene.add(bot.mesh);
@@ -1163,25 +1164,24 @@
     localStorage.setItem("taticoTime", worldTime);
     const night = worldTime === "night";
 
-    scene.background.set(night ? 0x050912 : 0x171913);
-    scene.fog.color.set(night ? 0x050912 : 0x171913);
-    scene.fog.near = night ? 38 : 58;
-    scene.fog.far = night ? 138 : 176;
-    renderer.toneMappingExposure = night ? 0.92 : 1.14;
+    scene.background.set(night ? 0x050912 : 0x6aa8d4);
+    scene.fog.color.set(night ? 0x050912 : 0x8ec4e8);
+    scene.fog.near = night ? 38 : 55;
+    scene.fog.far = night ? 138 : 165;
+    renderer.toneMappingExposure = night ? 0.92 : 1.22;
 
-    hemi.color.set(night ? 0x9bbdff : 0xdde8ff);
-    hemi.groundColor.set(night ? 0x171a24 : 0x3e4631);
-    hemi.intensity = night ? 0.98 : 1.78;
-    sun.color.set(night ? 0xb4c8ff : 0xfff1d4);
+    hemi.color.set(night ? 0x9bbdff : 0xc9e8ff);
+    hemi.groundColor.set(night ? 0x171a24 : 0x5a6e3e);
+    hemi.intensity = night ? 0.98 : 2.1;
+    sun.color.set(night ? 0xb4c8ff : 0xffe8b0);
     sun.position.set(night ? 24 : -38, night ? 34 : 56, night ? -44 : 24);
-    sun.intensity = night ? 0.58 : 2.22;
+    sun.intensity = night ? 0.58 : 2.8;
     fill.color.set(night ? 0x3b6cff : 0x9fc4ff);
-    fill.intensity = night ? 0.72 : 0.42;
-    rim.color.set(night ? 0x74c7ff : 0xff7d5a);
-    rim.intensity = night ? 0.5 : 0.28;
+    fill.intensity = night ? 0.72 : 0.5;
+    rim.color.set(night ? 0x74c7ff : 0xff9060);
+    rim.intensity = night ? 0.5 : 0.38;
 
     document.body.dataset.time = worldTime;
-    updateSkyDome(night);
     streetLights.forEach(({ light, glow, pool }) => {
       light.intensity = night ? 1.35 : 0.18;
       glow.material.opacity = night ? 0.34 : 0.13;
@@ -1489,6 +1489,11 @@
       return;
     }
 
+    if (data.type === "chat") {
+      addChatMsg(data.name, data.text, data.team);
+      return;
+    }
+
     if (data.type === "error") {
       setMessage(net.joined ? "Aviso online" : "Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
       if (net.joined) return;
@@ -1657,6 +1662,17 @@
         "<span class=\"stats\">Dano " + w.damage + " · pente " + w.mag + "<br>Cadencia " + Math.round(1000 / w.fireMs * 60) + " rpm</span>" +
         "</button>";
     }).join("");
+    el("itemCards").innerHTML = ITEM_ORDER.map(id => {
+      const item = ITEMS[id];
+      const count = id === "hpkit" ? player.hpKits : player.armorKits;
+      const disabled = player.money < item.price;
+      return "<button class=\"item-card " + (disabled ? "disabled" : "") + "\" data-item=\"" + id + "\">" +
+        "<strong>" + item.name + "</strong>" +
+        "<span class=\"price\">$" + item.price + "</span>" +
+        "<span class=\"stats\">" + item.desc + "</span>" +
+        (count > 0 ? "<span class=\"kit-count\">×" + count + "</span>" : "") +
+        "</button>";
+    }).join("");
   }
 
   function buyWeapon(id) {
@@ -1682,6 +1698,27 @@
     updateHud();
   }
 
+  function buyItem(id) {
+    if (phase !== "buy") return;
+    const item = ITEMS[id];
+    if (!item || player.money < item.price) return;
+    player.money -= item.price;
+    if (id === "hpkit") player.hpKits++;
+    else if (id === "armorkit") player.armorKits++;
+    else if (id === "ammo") { player.ammo = weapon().mag; }
+    renderBuy();
+    updateHud();
+  }
+
+  function switchWeapon(id) {
+    if (!player.owned.has(id) || id === player.weaponId) return;
+    player.weaponId = id;
+    player.reloading = false;
+    player.fireCooldown = 0;
+    updateViewModel();
+    updateHud();
+  }
+
   function buyMenuOpen() {
     const menu = el("buyMenu");
     return menu && !menu.hidden;
@@ -1693,9 +1730,59 @@
     return net.mode === "online" && phase === "buy" && !buyMenuOpen();
   }
 
-  function aimByDelta(dx, dy, sensitivity = 1) {
-    player.yaw -= dx * 0.0022 * sensitivity;
-    player.pitch = clamp(player.pitch - dy * 0.002 * sensitivity, -1.18, 1.08);
+  function aimByDelta(dx, dy, internalMult = 1) {
+    player.yaw -= dx * 0.0022 * sensMult * internalMult;
+    player.pitch = clamp(player.pitch - dy * 0.002 * sensMult * internalMult, -1.18, 1.08);
+  }
+
+  function setSensitivity(v) {
+    sensMult = clamp(parseFloat(v) || 1, 0.2, 5);
+    localStorage.setItem("taticoSens", sensMult);
+    const slider = el("sensSlider");
+    const label = el("sensValue");
+    if (slider) slider.value = sensMult;
+    if (label) label.textContent = sensMult.toFixed(1) + "×";
+  }
+
+  function openChat() {
+    if (chatOpen) return;
+    chatOpen = true;
+    el("chatForm").hidden = false;
+    el("chatInput").focus();
+    intentionalExit = true;
+    if (document.pointerLockElement) document.exitPointerLock?.();
+  }
+
+  function closeChat() {
+    if (!chatOpen) return;
+    chatOpen = false;
+    el("chatForm").hidden = true;
+    el("chatInput").value = "";
+    intentionalExit = false;
+    lockPointer();
+  }
+
+  function addChatMsg(name, text, team) {
+    const panel = el("chatMessages");
+    if (!panel) return;
+    const div = document.createElement("div");
+    div.className = "chat-msg";
+    const nameEl = document.createElement("b");
+    nameEl.className = team === "CT" ? "ct-name" : team === "TR" ? "tr-name" : "";
+    nameEl.textContent = name + ": ";
+    div.appendChild(nameEl);
+    div.appendChild(document.createTextNode(text));
+    panel.appendChild(div);
+    while (panel.children.length > 8) panel.removeChild(panel.firstChild);
+    setTimeout(() => { div.style.opacity = "0"; setTimeout(() => div.remove(), 3000); }, 7000);
+  }
+
+  function sendChat(text) {
+    const t = text.trim().slice(0, 80);
+    if (!t) return;
+    const team = net.mode === "online" ? net.team : "CT";
+    addChatMsg(getPlayerName(), t, team);
+    if (net.mode === "online") sendOnline({ type: "chat", text: t });
   }
 
   function enableMouseLook(x = mouse.lastX, y = mouse.lastY) {
@@ -1945,12 +2032,33 @@
 
   function damagePlayer(amount) {
     if (!player.alive) return;
-    player.hp -= amount;
+    if (player.armor > 0) {
+      const absorbed = Math.min(player.armor, Math.round(amount * 0.5));
+      player.armor = Math.max(0, player.armor - absorbed);
+      amount = Math.max(0, amount - absorbed);
+    }
+    player.hp = Math.max(0, player.hp - amount);
     if (player.hp <= 0) {
-      player.hp = 0;
       player.alive = false;
       endRound(false);
     }
+    updateHud();
+  }
+
+  function useHpKit() {
+    if (!player.alive || player.hpKits <= 0 || player.hp >= 100) return;
+    player.hp = Math.min(100, player.hp + 50);
+    player.hpKits--;
+    setMessage("Kit de Vida", "+" + Math.min(50, 100 - (player.hp - 50)) + " HP", 800);
+    updateHud();
+  }
+
+  function useArmorKit() {
+    if (!player.alive || player.armorKits <= 0 || player.armor >= 100) return;
+    player.armor = Math.min(100, player.armor + 100);
+    player.armorKits--;
+    setMessage("Kit de Escudo", "+100 Escudo", 800);
+    updateHud();
   }
 
   function reload() {
@@ -2052,7 +2160,7 @@
       botEye.y = 1.35;
       const toPlayer = player.position.clone().sub(bot.position);
       const dist = toPlayer.length();
-      const seen = player.alive && dist < 68 && hasLineOfSight(botEye, playerChest);
+      const seen = player.alive && dist < 90 && hasLineOfSight(botEye, playerChest);
       let moveX = 0;
       let moveZ = 0;
 
@@ -2073,7 +2181,7 @@
       } else {
         if (bot.think <= 0) {
           bot.think = rand(0.8, 1.7);
-          bot.target = new THREE.Vector3(rand(-58, 58), 0, rand(-44, 44));
+          bot.target = new THREE.Vector3(rand(-55, 55), 0, rand(-55, 55));
         }
         const target = bot.target || new THREE.Vector3(0, 0, 0);
         const d = target.clone().sub(bot.position);
@@ -2175,7 +2283,14 @@
   }
 
   function updateHud() {
-    el("hp").textContent = Math.ceil(player.hp);
+    const hpVal = Math.ceil(player.hp);
+    const armorVal = Math.ceil(player.armor);
+    el("hp").textContent = hpVal;
+    el("hpBar").style.width = player.hp + "%";
+    el("armor").textContent = armorVal;
+    el("armorBar").style.width = player.armor + "%";
+    el("hpKits").textContent = player.hpKits;
+    el("armorKits").textContent = player.armorKits;
     el("weapon").textContent = weapon().name;
     el("ammo").textContent = player.reloading ? "recarregando" : player.ammo + "/" + weapon().mag;
     el("money").textContent = "$" + player.money;
@@ -2345,6 +2460,34 @@
 
   function bindEvents() {
     window.addEventListener("resize", onResize);
+
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement === renderer.domElement) {
+        el("lockPrompt").hidden = true;
+        intentionalExit = false;
+      } else if (!intentionalExit && canControlPlayer() && !chatOpen) {
+        el("lockPrompt").hidden = false;
+      }
+    });
+
+    el("lockPrompt").addEventListener("click", () => {
+      el("lockPrompt").hidden = true;
+      intentionalExit = false;
+      lockPointer();
+    });
+
+    el("chatForm").addEventListener("submit", event => {
+      event.preventDefault();
+      sendChat(el("chatInput").value);
+      closeChat();
+    });
+
+    el("chatInput").addEventListener("keydown", event => {
+      if (event.code === "Escape") { event.preventDefault(); closeChat(); }
+    });
+
+    el("sensSlider").addEventListener("input", event => setSensitivity(event.target.value));
+
     window.addEventListener("keydown", event => {
       const target = event.target;
       const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
@@ -2360,12 +2503,26 @@
       if (event.code === "KeyR") reload();
       if (event.code === "KeyC") toggleQuickSettings();
       if (event.code === "KeyN") setTimeMode(worldTime === "night" ? "day" : "night");
-      if (event.code === "KeyB" && phase === "buy") showBuy(true);
+      if (event.code === "Digit1") switchWeapon("pistol");
+      if (event.code === "Digit2") switchWeapon("smg");
+      if (event.code === "Digit3") switchWeapon("shotgun");
+      if (event.code === "Digit4") switchWeapon("rifle");
+      if (event.code === "Digit5") switchWeapon("sniper");
+      if (event.code === "KeyV") useHpKit();
+      if (event.code === "KeyB" && phase === "live") useArmorKit();
+      if (event.code === "KeyL") showBuy(true);
+      if (event.code === "Enter" && !chatOpen && canControlPlayer()) {
+        openChat();
+        event.preventDefault();
+      }
       if (event.code === "Escape") {
+        if (chatOpen) { closeChat(); return; }
+        intentionalExit = true;
         mouse.freeLook = false;
         mouse.down = false;
         mouse.lookHeld = false;
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock?.();
+        el("lockPrompt").hidden = true;
         toggleQuickSettings(false);
         if (phase === "buy") showBuy(true);
       }
@@ -2486,6 +2643,10 @@
       const card = event.target.closest("[data-weapon]");
       if (card) buyWeapon(card.dataset.weapon);
     });
+    el("itemCards").addEventListener("click", event => {
+      const card = event.target.closest("[data-item]");
+      if (card) buyItem(card.dataset.item);
+    });
 
     const stick = el("touchMove");
     const knob = el("touchKnob");
@@ -2564,6 +2725,7 @@
     el("playerName").value = localStorage.getItem("taticoName") || "";
     updateManualUi();
     setCrosshairStyle(crosshairStyle);
+    setSensitivity(sensMult);
     setTimeMode(worldTime);
     refreshPublicRooms();
     window.setInterval(() => {
