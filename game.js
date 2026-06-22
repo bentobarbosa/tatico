@@ -76,6 +76,7 @@
   const remotePlayers = new Map();
   const tracers = [];
   const particles = [];
+  const impactMarks = [];
   const streetLights = [];
   let phase = "menu";
   let round = 1;
@@ -195,25 +196,83 @@
       roughness,
       metalness: options.metalness ?? 0.05,
       map: options.map || null,
+      bumpMap: options.bumpMap || null,
+      bumpScale: options.bumpScale ?? 0,
       emissive: options.emissive || 0x000000,
-      emissiveIntensity: options.emissiveIntensity || 0
+      emissiveIntensity: options.emissiveIntensity || 0,
+      envMapIntensity: options.envMapIntensity ?? 1
     });
   }
 
-  function makeNoiseTexture(colors, repeatX = 1, repeatY = 1, size = 128) {
+  function makeNoiseTexture(colors, repeatX = 1, repeatY = 1, size = 128, style = "noise") {
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = colors[0];
     ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < size * 5; i++) {
+    for (let i = 0; i < size * 6; i++) {
       ctx.fillStyle = colors[1 + Math.floor(Math.random() * (colors.length - 1))];
       const x = Math.random() * size;
       const y = Math.random() * size;
       const w = 1 + Math.random() * 3;
-      ctx.globalAlpha = 0.12 + Math.random() * 0.28;
+      ctx.globalAlpha = 0.1 + Math.random() * 0.32;
       ctx.fillRect(x, y, w, w);
+    }
+    if (style === "asphalt") {
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = colors[2] || "#555";
+      for (let i = 0; i < 34; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + rand(-18, 18), y + rand(-6, 6));
+        ctx.stroke();
+      }
+    }
+    if (style === "concrete") {
+      ctx.globalAlpha = 0.16;
+      ctx.strokeStyle = colors[1] || "#777";
+      for (let x = 0; x < size; x += size / 4) {
+        ctx.beginPath();
+        ctx.moveTo(x + rand(-2, 2), 0);
+        ctx.lineTo(x + rand(-2, 2), size);
+        ctx.stroke();
+      }
+      for (let y = 0; y < size; y += size / 4) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + rand(-2, 2));
+        ctx.lineTo(size, y + rand(-2, 2));
+        ctx.stroke();
+      }
+    }
+    if (style === "brick") {
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = colors[3] || "#3a2b25";
+      const rowH = size / 6;
+      for (let y = rowH; y < size; y += rowH) ctx.fillRect(0, y, size, 2);
+      for (let row = 0; row < 6; row++) {
+        const offset = row % 2 ? size / 8 : 0;
+        for (let x = offset; x < size; x += size / 4) ctx.fillRect(x, row * rowH, 2, rowH);
+      }
+    }
+    if (style === "metal") {
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = colors[2] || "#8a9299";
+      for (let x = 0; x < size; x += 18) ctx.fillRect(x, 0, 2, size);
+      ctx.globalAlpha = 0.12;
+      for (let y = 0; y < size; y += 23) ctx.fillRect(0, y, size, 1);
+    }
+    if (style === "wood") {
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = colors[2] || "#9b7441";
+      for (let y = 8; y < size; y += 9) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + rand(-2, 2));
+        for (let x = 0; x < size; x += 18) ctx.lineTo(x, y + Math.sin(x * 0.05 + y) * 2);
+        ctx.stroke();
+      }
     }
     ctx.globalAlpha = 1;
     const texture = new THREE.CanvasTexture(canvas);
@@ -225,7 +284,15 @@
   }
 
   function makeTexturedMat(color, roughness, colors, repeatX, repeatY, options = {}) {
-    return makeMat(color, roughness, { ...options, map: makeNoiseTexture(colors, repeatX, repeatY) });
+    const style = options.style || "noise";
+    const size = options.size || 192;
+    const bumpColors = ["#777777", "#555555", "#999999", "#444444"];
+    return makeMat(color, roughness, {
+      ...options,
+      map: makeNoiseTexture(colors, repeatX, repeatY, size, style),
+      bumpMap: makeNoiseTexture(bumpColors, repeatX, repeatY, 96, style),
+      bumpScale: options.bumpScale ?? 0.035
+    });
   }
 
   function makeGlowMat(color, intensity = 1.4) {
@@ -233,23 +300,23 @@
   }
 
   const mats = {
-    floor: makeTexturedMat(0x4b5a39, 0.9, ["#4b5a39", "#3c472f", "#66734d", "#2f3828"], 18, 14),
-    wall: makeTexturedMat(0x8c8a7e, 0.86, ["#8c8a7e", "#737064", "#aaa28f", "#5e6257"], 4, 5),
-    darkWall: makeTexturedMat(0x55594f, 0.88, ["#55594f", "#444940", "#6e7064", "#343a34"], 5, 5),
-    brick: makeTexturedMat(0x8e5f4b, 0.88, ["#8e5f4b", "#6f4639", "#ad7661", "#49352d"], 6, 3),
-    crate: makeTexturedMat(0x7b5a32, 0.78, ["#7b5a32", "#5f421f", "#9b7441", "#3f2d19"], 2, 2),
-    metal: makeTexturedMat(0x58606a, 0.54, ["#58606a", "#3f4852", "#77818a", "#2c333a"], 3, 3, { metalness: 0.22 }),
-    site: makeMat(0xd6a23a, 0.62),
-    ct: makeMat(0x3f83c4),
-    tr: makeMat(0xc49a42),
-    black: makeMat(0x141414, 0.7),
-    asphalt: makeTexturedMat(0x2f332d, 0.92, ["#2f332d", "#20241f", "#484c43", "#141714"], 14, 2),
-    containerBlue: makeTexturedMat(0x315e7e, 0.68, ["#315e7e", "#24465f", "#477996", "#1e3446"], 4, 2, { metalness: 0.18 }),
-    containerRed: makeTexturedMat(0x85483c, 0.68, ["#85483c", "#65352e", "#a86251", "#482a25"], 4, 2, { metalness: 0.15 }),
-    barrel: makeMat(0x365b4a, 0.58),
-    house: makeMat(0x9b8b72, 0.82),
-    houseDark: makeMat(0x6f705e, 0.86),
-    roof: makeMat(0x564337, 0.78),
+    floor: makeTexturedMat(0x4b5a39, 0.9, ["#4b5a39", "#3c472f", "#66734d", "#2f3828"], 18, 14, { style: "concrete", bumpScale: 0.02 }),
+    wall: makeTexturedMat(0x8c8a7e, 0.82, ["#8c8a7e", "#737064", "#b9b19b", "#5e6257"], 5, 5, { style: "concrete", bumpScale: 0.045 }),
+    darkWall: makeTexturedMat(0x55594f, 0.86, ["#55594f", "#444940", "#6e7064", "#343a34"], 6, 5, { style: "concrete", bumpScale: 0.045 }),
+    brick: makeTexturedMat(0x8e5f4b, 0.84, ["#8e5f4b", "#6f4639", "#ad7661", "#49352d"], 7, 4, { style: "brick", bumpScale: 0.055 }),
+    crate: makeTexturedMat(0x7b5a32, 0.76, ["#7b5a32", "#5f421f", "#a77d46", "#3f2d19"], 2, 2, { style: "wood", bumpScale: 0.045 }),
+    metal: makeTexturedMat(0x58606a, 0.48, ["#58606a", "#3f4852", "#808b94", "#2c333a"], 3, 3, { style: "metal", metalness: 0.34, bumpScale: 0.025 }),
+    site: makeTexturedMat(0xd6a23a, 0.55, ["#d6a23a", "#ad7c25", "#ffd66d", "#765018"], 3, 2, { style: "metal", bumpScale: 0.02 }),
+    ct: makeMat(0x3f83c4, 0.62, { metalness: 0.08 }),
+    tr: makeMat(0xc49a42, 0.62, { metalness: 0.08 }),
+    black: makeMat(0x141414, 0.54, { metalness: 0.16 }),
+    asphalt: makeTexturedMat(0x2f332d, 0.92, ["#2f332d", "#20241f", "#555a50", "#141714"], 16, 3, { style: "asphalt", bumpScale: 0.032 }),
+    containerBlue: makeTexturedMat(0x315e7e, 0.58, ["#315e7e", "#24465f", "#4d86a5", "#1e3446"], 4, 2, { style: "metal", metalness: 0.28, bumpScale: 0.034 }),
+    containerRed: makeTexturedMat(0x85483c, 0.58, ["#85483c", "#65352e", "#ad6958", "#482a25"], 4, 2, { style: "metal", metalness: 0.24, bumpScale: 0.034 }),
+    barrel: makeTexturedMat(0x365b4a, 0.52, ["#365b4a", "#254134", "#4d8069", "#16251f"], 2, 2, { style: "metal", metalness: 0.24, bumpScale: 0.025 }),
+    house: makeTexturedMat(0x9b8b72, 0.8, ["#9b8b72", "#786b58", "#c4b38e", "#5f5548"], 3, 3, { style: "concrete", bumpScale: 0.035 }),
+    houseDark: makeTexturedMat(0x6f705e, 0.84, ["#6f705e", "#565748", "#8d8d76", "#414238"], 3, 3, { style: "concrete", bumpScale: 0.035 }),
+    roof: makeTexturedMat(0x564337, 0.75, ["#564337", "#3d3028", "#745848", "#2b211b"], 4, 2, { style: "wood", bumpScale: 0.03 }),
     windowLit: makeMat(0xd9c06a, 0.35),
     trim: makeMat(0xc6b992, 0.7),
     lanePaint: makeGlowMat(0xf4e7bd),
@@ -257,6 +324,9 @@
     crateBand: makeMat(0x3d3326, 0.74),
     bombCore: makeMat(0x1a1d18, 0.62, { metalness: 0.3 }),
     bombScreen: makeGlowMat(0xd7ff6e),
+    weaponAccent: makeGlowMat(0xd7ff6e),
+    spark: new THREE.MeshBasicMaterial({ color: 0xffd36d, transparent: true, opacity: 0.95 }),
+    impactMark: new THREE.MeshBasicMaterial({ color: 0x110d0a, transparent: true, opacity: 0.55, depthWrite: false }),
     accentBlue: makeGlowMat(0x74c7ff),
     accentRed: makeGlowMat(0xff6d5d),
     accentGold: makeGlowMat(0xffd76d),
@@ -295,6 +365,28 @@
     top.position.set(0.02, 0.08, -0.5);
     group.add(top);
 
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.035, 0.52), mats.crateBand);
+    rail.position.set(0.02, 0.145, -0.53);
+    group.add(rail);
+
+    const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 0.18), mats.metal);
+    magazine.position.set(0.02, -0.25, -0.36);
+    magazine.rotation.x = -0.18;
+    group.add(magazine);
+
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.32, 0.18), mats.black);
+    grip.position.set(0.02, -0.25, -0.17);
+    grip.rotation.x = -0.42;
+    group.add(grip);
+
+    const sightBase = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.055, 0.08), mats.metal);
+    sightBase.position.set(0.02, 0.2, -0.68);
+    group.add(sightBase);
+
+    const sightDot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), mats.weaponAccent);
+    sightDot.position.set(0.02, 0.235, -0.72);
+    group.add(sightDot);
+
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.36, 10), mats.black);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0.02, 0.04, -0.98);
@@ -315,19 +407,33 @@
 
     group.userData.gun = gun;
     group.userData.top = top;
+    group.userData.rail = rail;
+    group.userData.magazine = magazine;
+    group.userData.sightBase = sightBase;
+    group.userData.sightDot = sightDot;
     group.userData.barrel = barrel;
     group.userData.flash = flash;
     group.userData.flashLight = flashLight;
     group.userData.flashUntil = 0;
+    group.userData.recoil = 0;
+    group.userData.basePosition = group.position.clone();
+    group.userData.baseRotation = group.rotation.clone();
     return group;
   }
 
   function updateViewModel() {
     const w = weapon();
     const longGun = w.range > 70 || w.mag >= 30;
-    viewModel.position.set(longGun ? 0.34 : 0.42, longGun ? -0.52 : -0.54, longGun ? -1.02 : -0.92);
+    viewModel.userData.basePosition.set(longGun ? 0.34 : 0.42, longGun ? -0.52 : -0.54, longGun ? -1.02 : -0.92);
+    viewModel.position.copy(viewModel.userData.basePosition);
+    viewModel.userData.baseRotation.set(-0.05, 0.12, 0);
+    viewModel.rotation.copy(viewModel.userData.baseRotation);
     viewModel.userData.gun.scale.set(longGun ? 0.86 : 1, longGun ? 0.92 : 1, longGun ? 1.55 : 1);
     viewModel.userData.top.scale.set(longGun ? 0.86 : 1, 1, longGun ? 1.45 : 1);
+    viewModel.userData.rail.scale.set(longGun ? 0.9 : 1, 1, longGun ? 1.55 : 1);
+    viewModel.userData.magazine.scale.set(longGun ? 1.08 : 1, longGun ? 1.35 : 1, longGun ? 1.05 : 1);
+    viewModel.userData.sightBase.position.z = longGun ? -0.86 : -0.68;
+    viewModel.userData.sightDot.position.z = longGun ? -0.92 : -0.72;
     viewModel.userData.barrel.position.z = longGun ? -1.28 : -0.98;
     viewModel.userData.flash.position.z = longGun ? -1.5 : -1.18;
   }
@@ -340,6 +446,7 @@
     flash.scale.set(scale, scale, scale);
     viewModel.userData.flashLight.intensity = 1.6 + Math.random() * 1.4;
     viewModel.userData.flashUntil = performance.now() + 42;
+    viewModel.userData.recoil = Math.min(1, viewModel.userData.recoil + 0.72);
   }
 
   function updateViewEffects() {
@@ -347,6 +454,13 @@
       viewModel.userData.flash.visible = false;
       viewModel.userData.flashLight.intensity = 0;
     }
+    viewModel.userData.recoil = Math.max(0, viewModel.userData.recoil - 0.12);
+    const kick = viewModel.userData.recoil;
+    viewModel.position.copy(viewModel.userData.basePosition);
+    viewModel.position.z += kick * 0.085;
+    viewModel.position.y -= kick * 0.018;
+    viewModel.rotation.copy(viewModel.userData.baseRotation);
+    viewModel.rotation.x -= kick * 0.035;
   }
 
   function addBox(x, z, w, d, h, mat, label = "parede") {
@@ -486,11 +600,18 @@
   }
 
   function addBarrel(x, z) {
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 18), mats.barrel);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 24), mats.barrel);
     mesh.position.set(x, 0.68, z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    [0.12, 0.68, 1.24].forEach(y => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.025, 6, 24), mats.metal);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, y, z);
+      ring.castShadow = true;
+      scene.add(ring);
+    });
     walls.push({ x, z, halfX: 0.62, halfZ: 0.62, h: 1.35, mesh, label: "barril" });
     return mesh;
   }
@@ -756,6 +877,21 @@
     cabin.position.set(-0.35, 1.38, 0);
     cabin.castShadow = true;
     group.add(cabin);
+
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.18, 1.92), mats.metal);
+    hood.position.set(-1.42, 1.22, 0);
+    hood.castShadow = true;
+    group.add(hood);
+
+    const bumperFront = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 2.08), mats.black);
+    bumperFront.position.set(-2.52, 0.62, 0);
+    bumperFront.castShadow = true;
+    group.add(bumperFront);
+
+    const bumperRear = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 2.08), mats.black);
+    bumperRear.position.set(2.52, 0.62, 0);
+    bumperRear.castShadow = true;
+    group.add(bumperRear);
 
     [-0.58, 0.58].forEach(pz => {
       const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.34), mats.lanePaint);
@@ -2064,16 +2200,46 @@
 
   function createTracer(start, end, color) {
     const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
     scene.add(line);
-    tracers.push({ line, life: 0.07 });
+    tracers.push({ line, life: 0.09, maxLife: 0.09 });
+    addImpact(end, color, true);
   }
 
-  function addImpact(pos, color) {
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color }));
+  function addImpact(pos, color, sparks = false) {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(sparks ? 0.055 : 0.08, 8, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }));
     mesh.position.copy(pos);
     scene.add(mesh);
-    particles.push({ mesh, life: 0.35, velocity: new THREE.Vector3(rand(-1, 1), rand(0.2, 1.5), rand(-1, 1)) });
+    particles.push({ mesh, life: sparks ? 0.22 : 0.35, maxLife: sparks ? 0.22 : 0.35, velocity: new THREE.Vector3(rand(-1, 1), rand(0.2, 1.5), rand(-1, 1)) });
+
+    if (sparks) {
+      const markMat = mats.impactMark.clone();
+      const mark = new THREE.Mesh(new THREE.CircleGeometry(rand(0.09, 0.17), 14), markMat);
+      mark.position.copy(pos);
+      mark.position.addScaledVector(cameraDir(), -0.012);
+      mark.lookAt(camera.position);
+      scene.add(mark);
+      impactMarks.push({ mesh: mark, life: 7, maxLife: 7 });
+
+      for (let i = 0; i < 4; i++) {
+        const spark = new THREE.Mesh(new THREE.SphereGeometry(rand(0.018, 0.035), 6, 4), mats.spark.clone());
+        spark.position.copy(pos);
+        scene.add(spark);
+        particles.push({
+          mesh: spark,
+          life: rand(0.18, 0.34),
+          maxLife: 0.34,
+          velocity: new THREE.Vector3(rand(-2.4, 2.4), rand(0.6, 2.8), rand(-2.4, 2.4))
+        });
+      }
+
+      while (impactMarks.length > 80) {
+        const old = impactMarks.shift();
+        scene.remove(old.mesh);
+        old.mesh.geometry.dispose();
+        old.mesh.material.dispose();
+      }
+    }
   }
 
   function damageBot(bot, amount) {
@@ -2290,7 +2456,7 @@
   function updateTracers(dt) {
     for (const t of tracers) {
       t.life -= dt;
-      t.line.material.opacity = clamp(t.life / 0.07, 0, 1);
+      t.line.material.opacity = clamp(t.life / (t.maxLife || 0.07), 0, 1);
       if (t.life <= 0) {
         scene.remove(t.line);
         t.line.geometry.dispose();
@@ -2307,7 +2473,7 @@
       p.life -= dt;
       p.velocity.y -= 5 * dt;
       p.mesh.position.addScaledVector(p.velocity, dt);
-      p.mesh.material.opacity = clamp(p.life / 0.35, 0, 1);
+      p.mesh.material.opacity = clamp(p.life / (p.maxLife || 0.35), 0, 1);
       if (p.life <= 0) {
         scene.remove(p.mesh);
         p.mesh.geometry.dispose();
@@ -2316,6 +2482,19 @@
     }
     for (let i = particles.length - 1; i >= 0; i--) {
       if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    for (const mark of impactMarks) {
+      mark.life -= dt;
+      mark.mesh.material.opacity = 0.55 * clamp(mark.life / mark.maxLife, 0, 1);
+      if (mark.life <= 0) {
+        scene.remove(mark.mesh);
+        mark.mesh.geometry.dispose();
+        mark.mesh.material.dispose();
+      }
+    }
+    for (let i = impactMarks.length - 1; i >= 0; i--) {
+      if (impactMarks[i].life <= 0) impactMarks.splice(i, 1);
     }
   }
 
@@ -2326,8 +2505,8 @@
     camera.rotation.x = player.pitch;
     const moving = keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD;
     const bob = moving && canControlPlayer() ? Math.sin(performance.now() * 0.01) : 0;
-    viewModel.rotation.z = bob * 0.012;
-    viewModel.rotation.x = -0.05 + Math.abs(bob) * 0.012;
+    viewModel.rotation.z = viewModel.userData.baseRotation.z + bob * 0.012;
+    viewModel.rotation.x += Math.abs(bob) * 0.012;
   }
 
   function updateBombMode(dt) {

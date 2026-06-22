@@ -8,6 +8,7 @@ const { URL } = require("node:url");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 8080);
+const host = process.env.HOST || "0.0.0.0";
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 const WORLD_W = 156;
@@ -916,7 +917,8 @@ setInterval(() => {
 
 server.on("upgrade", handleUpgrade);
 
-server.listen(port, () => {
-  console.log(`Tatico 3D rodando em http://localhost:${port}`);
+server.listen(port, host, () => {
+  const localUrl = host === "0.0.0.0" ? `http://localhost:${port}` : `http://${host}:${port}`;
+  console.log(`Tatico 3D rodando em ${localUrl}`);
   console.log("Multiplayer 4x4 com salas ativo em /multiplayer");
 });
