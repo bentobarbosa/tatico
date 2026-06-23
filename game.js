@@ -9,6 +9,7 @@
   const el = id => document.getElementById(id);
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const rand = (min, max) => min + Math.random() * (max - min);
+  const escapeHtml = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const WORLD_W = 156;
   const WORLD_D = 122;
   const PLAYER_HEIGHT = 1.72;
@@ -148,7 +149,9 @@
     pendingPrivate: false,
     lastSend: 0,
     spawnId: -1,
-    joined: false
+    joined: false,
+    pingMs: null,
+    pingSentAt: 0
   };
 
   let manualEnabled = localStorage.getItem("taticoManual") !== "off";
@@ -1387,10 +1390,7 @@
   }
 
   function disconnectOnline() {
-    if (net.ws) {
-      net.ws.onclose = null;
-      net.ws.close();
-    }
+    const oldWs = net.ws;
     net.ws = null;
     net.id = null;
     net.team = null;
@@ -1402,6 +1402,7 @@
     el("onlinePanel").hidden = true;
     el("sessionBanner").hidden = true;
     clearRemotePlayers();
+    if (oldWs) try { oldWs.close(); } catch { /* ignore */ }
   }
 
   function startGame() {
@@ -1542,8 +1543,9 @@
     });
 
     ws.addEventListener("close", () => {
+      if (net.ws !== ws) return;
       if (net.mode !== "online") return;
-      setMessage("Servidor desconectou", "Volte ao lobby e tente de novo.", 3600);
+      setMessage("Conexao perdida", "Verifique sua internet e tente de novo.", 4000);
       phase = "menu";
       el("startScreen").classList.remove("hidden");
       el("buyButton").hidden = false;
@@ -1677,6 +1679,15 @@
       return;
     }
 
+    if (data.type === "pong") {
+      if (net.pingSentAt) {
+        net.pingMs = Math.round(performance.now() - net.pingSentAt);
+        const pingEl = el("onlinePing");
+        if (pingEl) pingEl.textContent = net.pingMs + "ms";
+      }
+      return;
+    }
+
     if (data.type === "error") {
       setMessage(net.joined ? "Aviso online" : "Nao entrou no online", data.message || "Tente de novo em alguns segundos.", 4200);
       if (net.joined) return;
@@ -1686,6 +1697,14 @@
       disconnectOnline();
       net.mode = "offline";
     }
+  }
+
+  let lastPingTime = 0;
+  function maybePing(now) {
+    if (net.mode !== "online" || !net.joined || now - lastPingTime < 5000) return;
+    lastPingTime = now;
+    net.pingSentAt = performance.now();
+    sendOnline({ type: "ping", t: net.pingSentAt });
   }
 
   function syncRemotePlayers() {
@@ -1723,12 +1742,27 @@
     const privacy = net.room?.public === false ? "Privada" : "Publica";
     const stateLabel = onlineStateLabel(net.matchState);
     el("onlineTitle").textContent = "Sala " + code + " · " + privacy;
-    el("onlineTeam").textContent = stateLabel + " · " + (net.team ? "Time " + net.team : "Conectando") + " · CT " + (net.slots.CT || 0) + "/4 · TR " + (net.slots.TR || 0) + "/4";
+    el("onlineTeam").textContent = stateLabel + " · " + (net.team ? "Time " + net.team : "Conectando");
 
     const dots = [];
     for (let i = 0; i < 4; i++) dots.push("<span class=\"slot-dot " + (i < (net.slots.CT || 0) ? "ct" : "") + "\"></span>");
     for (let i = 0; i < 4; i++) dots.push("<span class=\"slot-dot " + (i < (net.slots.TR || 0) ? "tr" : "") + "\"></span>");
     el("onlineSlots").innerHTML = dots.join("");
+
+    const playerList = el("onlinePlayers");
+    if (playerList && net.players.length) {
+      const ct = net.players.filter(p => p.team === "CT");
+      const tr = net.players.filter(p => p.team === "TR");
+      const row = team => team.map(p => {
+        const isMe = p.id === net.id;
+        const hp = Math.ceil(p.hp ?? 100);
+        const cls = "op-row" + (p.team === "CT" ? " op-ct" : " op-tr") + (isMe ? " op-me" : "") + (!p.alive ? " op-dead" : "");
+        return "<div class=\"" + cls + "\"><span class=\"op-name\">" + (isMe ? "▶ " : "") + escapeHtml(p.name) + "</span><span class=\"op-hp\">" + hp + "</span></div>";
+      }).join("");
+      playerList.innerHTML = "<div class=\"op-team\"><span class=\"op-label ct-label\">CT</span>" + row(ct) + "</div><div class=\"op-team\"><span class=\"op-label tr-label\">TR</span>" + row(tr) + "</div>";
+    } else if (playerList) {
+      playerList.innerHTML = "";
+    }
   }
 
   function activateSessionStart() {
@@ -2805,6 +2839,7 @@
     updateHud();
     updateTouchControls();
     drawMiniMap();
+    maybePing(performance.now());
     if (performance.now() > messageUntil) el("message").innerHTML = "";
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
@@ -2983,6 +3018,11 @@
     el("settingsButton").addEventListener("click", () => toggleQuickSettings());
     el("closeSettings").addEventListener("click", () => toggleQuickSettings(false));
     el("sessionStart").addEventListener("click", activateSessionStart);
+    el("copyCode")?.addEventListener("click", () => {
+      const code = net.room?.code;
+      if (!code) return;
+      navigator.clipboard?.writeText(code).then(() => setMessage("Codigo copiado!", code + " · Mande para seu amigo.", 1800));
+    });
     el("refreshRooms").addEventListener("click", refreshPublicRooms);
     el("publicRooms").addEventListener("click", event => {
       const roomButton = event.target.closest("[data-join-room]");

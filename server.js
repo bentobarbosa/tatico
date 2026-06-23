@@ -709,12 +709,11 @@ function handleFire(socket, data) {
 }
 
 function handleChat(socket, data) {
-  const player = playerBySocket.get(socket);
-  if (!player) return;
+  const room = roomFromSocket(socket);
+  const player = room?.players.get(socket.playerId);
+  if (!room || !player) return;
   const text = String(data.text || "").slice(0, 80).trim();
   if (!text) return;
-  const room = roomByCode.get(player.room);
-  if (!room) return;
   broadcast(room, { type: "chat", name: player.name, team: player.team, text });
 }
 
@@ -725,12 +724,16 @@ function handleSocketMessage(socket, message) {
   } catch {
     return;
   }
-
-  if (data.type === "join") handleJoin(socket, data);
-  else if (data.type === "state") handleState(socket, data);
-  else if (data.type === "fire") handleFire(socket, data);
-  else if (data.type === "buy") handleBuy(socket, data);
-  else if (data.type === "chat") handleChat(socket, data);
+  try {
+    if (data.type === "join") handleJoin(socket, data);
+    else if (data.type === "state") handleState(socket, data);
+    else if (data.type === "fire") handleFire(socket, data);
+    else if (data.type === "buy") handleBuy(socket, data);
+    else if (data.type === "chat") handleChat(socket, data);
+    else if (data.type === "ping") wsSend(socket, { type: "pong", t: data.t });
+  } catch (err) {
+    console.error("[ws] handler error:", err.message);
+  }
 }
 
 function readFrames(socket, chunk) {
@@ -828,9 +831,13 @@ function handleUpgrade(req, socket) {
 
   socket.buffer = Buffer.alloc(0);
   sockets.add(socket);
+  socket.pingTimer = setInterval(() => {
+    if (socket.destroyed) { clearInterval(socket.pingTimer); return; }
+    try { socket.write(encodeFrame(Buffer.alloc(0), 0x9)); } catch { /* ignore */ }
+  }, 20000);
   socket.on("data", chunk => readFrames(socket, chunk));
-  socket.on("close", () => removeSocket(socket));
-  socket.on("error", () => removeSocket(socket));
+  socket.on("close", () => { clearInterval(socket.pingTimer); removeSocket(socket); });
+  socket.on("error", () => { clearInterval(socket.pingTimer); removeSocket(socket); });
 }
 
 const server = http.createServer((req, res) => {

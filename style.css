@@ -1485,3 +1485,96 @@ button {
   opacity: .38;
   pointer-events: none;
 }
+
+/* ── Online panel improvements ──────────────── */
+.online-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.online-ping {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: rgba(245,242,232,.5) !important;
+  margin-top: 0 !important;
+}
+
+.online-players {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.op-team {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.op-label {
+  display: block !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 2px;
+}
+
+.ct-label { color: var(--ct) !important; }
+.tr-label { color: var(--tr) !important; }
+
+.op-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.05);
+}
+
+.op-row.op-me { background: rgba(255,255,255,.1); }
+.op-row.op-dead { opacity: .38; }
+
+.op-name {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: rgba(245,242,232,.85) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+  margin-top: 0 !important;
+}
+
+.op-hp {
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  color: var(--acid) !important;
+  margin-top: 0 !important;
+  flex-shrink: 0;
+}
+
+.op-row.op-dead .op-hp { color: rgba(245,242,232,.35) !important; }
+
+/* ── Session banner: code + copy button ─────── */
+.session-code-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#copyCode {
+  min-height: 30px !important;
+  padding: 0 8px !important;
+  font-size: 14px !important;
+  background: rgba(116,199,255,.15) !important;
+  border: 1px solid rgba(116,199,255,.28) !important;
+  color: var(--ct) !important;
+  cursor: pointer;
+  border-radius: 6px;
+  pointer-events: auto;
+}
