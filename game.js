@@ -30,6 +30,7 @@
     sniper:  { name: "Barrett M82", price: 4200, damage: 120, mag: 5,  fireMs: 1350, reloadMs: 2800, spread: 0,    pellets: 1, range: 115 }
   };
   const WEAPON_ORDER = ["pistol", "smg", "shotgun", "rifle", "sniper"];
+  const ASSET_MANIFEST_URL = "assets/manifest.json";
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x6aa8d4);
@@ -337,6 +338,187 @@
     glass: new THREE.MeshStandardMaterial({ color: 0x8dc3d6, roughness: 0.22, metalness: 0.05, transparent: true, opacity: 0.42 })
   };
 
+  const assetPack = {
+    manifest: null,
+    models: new Map(),
+    sounds: new Map(),
+    ready: false,
+    audioContext: null,
+    gltfLoader: null,
+    gltfLoaderPromise: null
+  };
+
+  async function loadAssetPack() {
+    try {
+      const response = await fetch(ASSET_MANIFEST_URL, { cache: "no-store" });
+      if (!response.ok) throw new Error("manifest unavailable");
+      assetPack.manifest = await response.json();
+    } catch {
+      assetPack.manifest = { models: {}, textures: {}, sounds: {} };
+    }
+
+    await Promise.all([
+      loadTextureAssets(assetPack.manifest.textures || {}),
+      loadModelAssets(assetPack.manifest.models || {}),
+      loadSoundAssets(assetPack.manifest.sounds || {})
+    ]);
+    assetPack.ready = true;
+  }
+
+  function assetUrl(entry) {
+    if (!entry) return "";
+    if (typeof entry === "string") return entry;
+    return entry.url || "";
+  }
+
+  async function getGltfLoader() {
+    if (assetPack.gltfLoader) return assetPack.gltfLoader;
+    if (!assetPack.gltfLoaderPromise) {
+      assetPack.gltfLoaderPromise = import("three/addons/loaders/GLTFLoader.js")
+        .then(module => {
+          assetPack.gltfLoader = new module.GLTFLoader();
+          return assetPack.gltfLoader;
+        });
+    }
+    return assetPack.gltfLoaderPromise;
+  }
+
+  async function loadModelAssets(modelEntries) {
+    const entries = Object.entries(modelEntries).filter(([, entry]) => assetUrl(entry));
+    if (!entries.length) return;
+    let loader;
+    try {
+      loader = await getGltfLoader();
+    } catch {
+      return;
+    }
+    await Promise.all(entries.map(([id, entry]) => new Promise(resolve => {
+      loader.load(assetUrl(entry), gltf => {
+        gltf.scene.traverse(node => {
+          if (!node.isMesh) return;
+          node.castShadow = true;
+          node.receiveShadow = true;
+          if (node.material) node.material.needsUpdate = true;
+        });
+        assetPack.models.set(id, gltf.scene);
+        resolve();
+      }, undefined, () => resolve());
+    })));
+  }
+
+  async function loadTextureAssets(textureEntries) {
+    const entries = Object.entries(textureEntries).filter(([, entry]) => assetUrl(entry));
+    if (!entries.length) return;
+    const loader = new THREE.TextureLoader();
+    await Promise.all(entries.map(([id, entry]) => new Promise(resolve => {
+      const url = assetUrl(entry);
+      loader.load(url, texture => {
+        const target = typeof entry === "object" && entry.material ? entry.material : id;
+        const repeat = typeof entry === "object" && Array.isArray(entry.repeat) ? entry.repeat : [1, 1];
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(repeat[0] || 1, repeat[1] || 1);
+        if ("colorSpace" in texture) texture.colorSpace = THREE.SRGBColorSpace;
+        if (mats[target]) {
+          mats[target].map = texture;
+          mats[target].needsUpdate = true;
+        }
+        resolve();
+      }, undefined, () => resolve());
+    })));
+  }
+
+  async function loadSoundAssets(soundEntries) {
+    const entries = Object.entries(soundEntries).filter(([, entry]) => assetUrl(entry));
+    if (!entries.length) return;
+    const context = ensureAudioContext(false);
+    if (!context) return;
+    await Promise.all(entries.map(async ([id, entry]) => {
+      try {
+        const response = await fetch(assetUrl(entry), { cache: "force-cache" });
+        const data = await response.arrayBuffer();
+        const buffer = await context.decodeAudioData(data);
+        assetPack.sounds.set(id, buffer);
+      } catch {
+        // Fallback synth sounds keep the game playable when files are missing.
+      }
+    }));
+  }
+
+  function assetModel(id, options = {}) {
+    const source = assetPack.models.get(id);
+    if (!source) return null;
+    const model = source.clone(true);
+    const scale = options.scale ?? 1;
+    model.scale.setScalar(scale);
+    if (options.position) model.position.copy(options.position);
+    if (options.rotationY) model.rotation.y = options.rotationY;
+    return model;
+  }
+
+  function ensureAudioContext(resume = true) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!assetPack.audioContext) assetPack.audioContext = new AudioCtx();
+    if (resume && assetPack.audioContext.state === "suspended") assetPack.audioContext.resume?.();
+    return assetPack.audioContext;
+  }
+
+  function playBufferSound(id, volume = 0.5) {
+    const context = ensureAudioContext();
+    const buffer = assetPack.sounds.get(id);
+    if (!context || !buffer) return false;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = volume;
+    source.connect(gain).connect(context.destination);
+    source.start();
+    return true;
+  }
+
+  function playSynthShot() {
+    if (playBufferSound("shot_" + player.weaponId, 0.6) || playBufferSound("shot", 0.6)) return;
+    const context = ensureAudioContext();
+    if (!context) return;
+    const now = context.currentTime;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    const filter = context.createBiquadFilter();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(player.weaponId === "sniper" ? 84 : player.weaponId === "smg" ? 150 : 118, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.08);
+    filter.type = "lowpass";
+    filter.frequency.value = 900;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.32, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    osc.connect(filter).connect(gain).connect(context.destination);
+    osc.start(now);
+    osc.stop(now + 0.13);
+  }
+
+  function playHitSound() {
+    if (playBufferSound("hit", 0.45)) return;
+    const context = ensureAudioContext();
+    if (!context) return;
+    const now = context.currentTime;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    osc.connect(gain).connect(context.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  function unlockAudio() {
+    ensureAudioContext();
+  }
+
   const viewModel = createViewModel();
   camera.add(viewModel);
 
@@ -439,9 +621,37 @@
     viewModel.userData.sightDot.position.z = longGun ? -0.92 : -0.72;
     viewModel.userData.barrel.position.z = longGun ? -1.28 : -0.98;
     viewModel.userData.flash.position.z = longGun ? -1.5 : -1.18;
+    applyViewWeaponAsset();
+  }
+
+  function applyViewWeaponAsset() {
+    if (viewModel.userData.assetWeaponId === player.weaponId) return;
+    if (viewModel.userData.assetModel) {
+      viewModel.remove(viewModel.userData.assetModel);
+      viewModel.userData.assetModel = null;
+    }
+
+    const model = assetModel("weapon_" + player.weaponId, { scale: 0.42 });
+    if (!model) {
+      viewModel.userData.assetWeaponId = player.weaponId;
+      [viewModel.userData.gun, viewModel.userData.top, viewModel.userData.rail, viewModel.userData.magazine, viewModel.userData.sightBase, viewModel.userData.sightDot, viewModel.userData.barrel].forEach(part => {
+        if (part) part.visible = true;
+      });
+      return;
+    }
+
+    model.position.set(0.05, -0.12, -0.62);
+    model.rotation.set(0, Math.PI, 0);
+    viewModel.add(model);
+    viewModel.userData.assetModel = model;
+    viewModel.userData.assetWeaponId = player.weaponId;
+    [viewModel.userData.gun, viewModel.userData.top, viewModel.userData.rail, viewModel.userData.magazine, viewModel.userData.sightBase, viewModel.userData.sightDot, viewModel.userData.barrel].forEach(part => {
+      if (part) part.visible = false;
+    });
   }
 
   function triggerMuzzleFlash() {
+    playSynthShot();
     const flash = viewModel.userData.flash;
     flash.visible = true;
     flash.rotation.z = Math.random() * Math.PI;
@@ -536,10 +746,16 @@
 
   function addCrate(x, z, size = 3, h = 2.1) {
     const mesh = addBox(x, z, size, size, h, mats.crate, "caixa");
+    const custom = assetModel("crate", { scale: size / 3, position: new THREE.Vector3(x, 0, z) });
+    if (custom) {
+      scene.add(custom);
+      mesh.visible = false;
+    }
     const edge = new THREE.EdgesGeometry(mesh.geometry);
     const line = new THREE.LineSegments(edge, new THREE.LineBasicMaterial({ color: 0x312519, transparent: true, opacity: 0.55 }));
     line.position.copy(mesh.position);
     scene.add(line);
+    if (custom) line.visible = false;
     mesh.userData.edge = line;
     const bands = new THREE.Group();
     [0.48, h - 0.38].forEach(y => {
@@ -557,6 +773,7 @@
     bands.add(labelPlate);
     bands.position.copy(mesh.position);
     scene.add(bands);
+    if (custom) bands.visible = false;
     mesh.userData.bands = bands;
     const wall = walls[walls.length - 1];
     if (wall) wall.climbable = true;
@@ -564,6 +781,11 @@
   }
 
   function addContainer(x, z, rot = 0, colorMat = mats.containerBlue) {
+    const customId = colorMat === mats.containerRed ? "container_red" : "container_blue";
+    const custom = assetModel(customId, { scale: 1, position: new THREE.Vector3(x, 0, z), rotationY: rot });
+    if (custom) {
+      scene.add(custom);
+    }
     const group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(10, 3.3, 3.2), colorMat);
     body.castShadow = true;
@@ -589,6 +811,7 @@
     group.position.set(x, 1.65, z);
     group.rotation.y = rot;
     scene.add(group);
+    if (custom) group.visible = false;
     const horizontal = Math.abs(Math.cos(rot)) > 0.7;
     walls.push({
       x,
@@ -603,17 +826,21 @@
   }
 
   function addBarrel(x, z) {
+    const custom = assetModel("barrel", { scale: 1, position: new THREE.Vector3(x, 0, z) });
+    if (custom) scene.add(custom);
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 24), mats.barrel);
     mesh.position.set(x, 0.68, z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    if (custom) mesh.visible = false;
     [0.12, 0.68, 1.24].forEach(y => {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.025, 6, 24), mats.metal);
       ring.rotation.x = Math.PI / 2;
       ring.position.set(x, y, z);
       ring.castShadow = true;
       scene.add(ring);
+      if (custom) ring.visible = false;
     });
     walls.push({ x, z, halfX: 0.62, halfZ: 0.62, h: 1.35, mesh, label: "barril" });
     return mesh;
@@ -672,6 +899,14 @@
   }
 
   function createBombMesh() {
+    const custom = assetModel("bomb", { scale: 1 });
+    if (custom) {
+      custom.visible = false;
+      scene.add(custom);
+      bomb.mesh = custom;
+      bomb.light = null;
+      return custom;
+    }
     const group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.36, 0.62), mats.bombCore);
     body.position.y = 0.26;
@@ -869,6 +1104,9 @@
   }
 
   function addVehicle(x, z, rot = 0, colorMat = mats.containerRed) {
+    const customId = colorMat === mats.containerBlue ? "vehicle_blue" : "vehicle_red";
+    const custom = assetModel(customId, { scale: 1, position: new THREE.Vector3(x, 0, z), rotationY: rot });
+    if (custom) scene.add(custom);
     const group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.9, 2.25), colorMat);
     body.position.y = 0.85;
@@ -919,6 +1157,7 @@
     group.position.set(x, 0, z);
     group.rotation.y = rot;
     scene.add(group);
+    if (custom) group.visible = false;
 
     const horizontal = Math.abs(Math.cos(rot)) > 0.7;
     walls.push({
@@ -1071,6 +1310,10 @@
   const BOT_SKINS = [0xd4a07a, 0xc08850, 0xf0c8a0, 0x8a6040, 0x6b4530, 0xe8b890];
 
   function createBotMesh(colorMat, skinHex) {
+    const customId = colorMat === mats.ct ? "bot_ct" : "bot_tr";
+    const custom = assetModel(customId, { scale: 1 });
+    if (custom) return custom;
+
     const group = new THREE.Group();
 
     const uniform = colorMat;
@@ -1654,6 +1897,7 @@
     if (data.type === "shot") {
       if (data.shooterId === net.id && data.hitId) {
         pulseCrosshair(true);
+        playHitSound();
       }
       if (data.shooterId !== net.id) {
         const color = data.team === "CT" ? 0x73b9ff : 0xf2b85b;
@@ -2196,7 +2440,10 @@
       }
       createTracer(origin, origin.clone().addScaledVector(dir, hitDist), hitBot ? 0x9cff6d : 0xffdf72);
     }
-    if (hitSomething) pulseCrosshair(true);
+    if (hitSomething) {
+      pulseCrosshair(true);
+      playHitSound();
+    }
     if (player.ammo <= 0) reload();
     updateHud();
   }
@@ -2853,6 +3100,8 @@
 
   function bindEvents() {
     window.addEventListener("resize", onResize);
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
 
     document.addEventListener("pointerlockchange", () => {
       if (document.pointerLockElement === renderer.domElement) {
@@ -3130,7 +3379,9 @@
     });
   }
 
-  function init() {
+  async function init() {
+    await loadAssetPack();
+    applyViewWeaponAsset();
     buildMap();
     bindEvents();
     el("playerName").value = localStorage.getItem("taticoName") || "";
@@ -3148,5 +3399,8 @@
     requestAnimationFrame(loop);
   }
 
-  init();
+  init().catch(error => {
+    console.error(error);
+    el("loading").textContent = "Nao foi possivel iniciar o jogo.";
+  });
 })();

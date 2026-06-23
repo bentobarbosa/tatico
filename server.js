@@ -9,6 +9,7 @@ const { URL } = require("node:url");
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 const WORLD_W = 156;
@@ -48,8 +49,10 @@ const mimeTypes = {
 
 const sockets = new Set();
 const rooms = new Map();
+const playerStats = new Map();
 const walls = [];
 let nextPlayerId = 1;
+const serverStartedAt = Date.now();
 
 const spawns = {
   CT: [
@@ -67,11 +70,19 @@ const spawns = {
 };
 
 function send(res, status, body, type = "text/plain; charset=utf-8") {
-  res.writeHead(status, {
+  const headers = {
     "Content-Type": type,
-    "Cache-Control": status === 200 ? "public, max-age=60" : "no-store"
-  });
+    "Cache-Control": status === 200 ? "public, max-age=60" : "no-store",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  };
+  res.writeHead(status, headers);
   res.end(body);
+}
+
+function sendJson(res, status, data) {
+  send(res, status, JSON.stringify(data), "application/json; charset=utf-8");
 }
 
 function resolvePublicFile(requestUrl) {
@@ -98,6 +109,55 @@ function cleanName(value) {
     .replace(/[^a-zA-Z0-9 _-]/g, "")
     .trim()
     .slice(0, 16) || "Jogador";
+}
+
+function statKey(name) {
+  return cleanName(name).toLowerCase();
+}
+
+function statsFor(name) {
+  const cleaned = cleanName(name);
+  const key = statKey(cleaned);
+  if (!playerStats.has(key)) {
+    playerStats.set(key, {
+      name: cleaned,
+      joins: 0,
+      kills: 0,
+      deaths: 0,
+      wins: 0,
+      losses: 0,
+      rounds: 0,
+      moneyEarned: 0,
+      lastSeen: Date.now()
+    });
+  }
+  const stats = playerStats.get(key);
+  stats.name = cleaned;
+  stats.lastSeen = Date.now();
+  return stats;
+}
+
+function recordJoin(name) {
+  const stats = statsFor(name);
+  stats.joins++;
+}
+
+function recordElimination(killerName, victimName) {
+  const killer = statsFor(killerName);
+  killer.kills++;
+  killer.moneyEarned += 300;
+  const victim = statsFor(victimName);
+  victim.deaths++;
+}
+
+function recordRoundStats(room, winner) {
+  for (const player of room.players.values()) {
+    const stats = statsFor(player.name);
+    stats.rounds++;
+    if (!winner) continue;
+    if (player.team === winner) stats.wins++;
+    else stats.losses++;
+  }
 }
 
 function normalizeRoomCode(value) {
@@ -133,6 +193,77 @@ function roomListSummary(room) {
     round: room.round,
     matchState: room.matchState,
     slots: { CT: teamCount(room, "CT"), TR: teamCount(room, "TR") }
+  };
+}
+
+function liveCounts() {
+  let playerCount = 0;
+  let liveRooms = 0;
+  for (const room of rooms.values()) {
+    playerCount += room.players.size;
+    if (room.matchState === "live") liveRooms++;
+  }
+  return { playerCount, liveRooms };
+}
+
+function leaderboard(limit = 20) {
+  return [...playerStats.values()]
+    .sort((a, b) =>
+      b.wins - a.wins ||
+      b.kills - a.kills ||
+      a.deaths - b.deaths ||
+      b.lastSeen - a.lastSeen
+    )
+    .slice(0, limit)
+    .map((stats, index) => ({
+      rank: index + 1,
+      name: stats.name,
+      joins: stats.joins,
+      kills: stats.kills,
+      deaths: stats.deaths,
+      wins: stats.wins,
+      losses: stats.losses,
+      rounds: stats.rounds,
+      moneyEarned: stats.moneyEarned,
+      kd: stats.deaths > 0 ? Number((stats.kills / stats.deaths).toFixed(2)) : stats.kills,
+      lastSeen: new Date(stats.lastSeen).toISOString()
+    }));
+}
+
+function gameConfig() {
+  return {
+    game: "tatico-3d",
+    title: "Tatico 3D",
+    modes: ["Treino offline", "Modo bomba", "Online 4x4"],
+    roomCapacity: ROOM_CAPACITY,
+    buyTimeMs: BUY_TIME_MS,
+    weapons: Object.entries(WEAPONS).map(([id, weapon]) => ({ id, ...weapon })),
+    endpoints: {
+      status: "/api/status",
+      rooms: "/api/rooms",
+      leaderboard: "/api/leaderboard",
+      config: "/api/config",
+      play: "/"
+    }
+  };
+}
+
+function gameStatus() {
+  const counts = liveCounts();
+  return {
+    ok: true,
+    game: "tatico-3d",
+    title: "Tatico 3D",
+    multiplayer: true,
+    uptimeMs: Date.now() - serverStartedAt,
+    rooms: rooms.size,
+    liveRooms: counts.liveRooms,
+    players: counts.playerCount,
+    leaderboardSize: playerStats.size,
+    publicRooms: [...rooms.values()]
+      .filter(room => room.public && room.players.size < ROOM_CAPACITY)
+      .sort((a, b) => b.players.size - a.players.size || a.createdAt - b.createdAt)
+      .map(roomListSummary)
   };
 }
 
@@ -507,6 +638,7 @@ function checkRoundEnd(room) {
     return;
   }
   if (ctAlive === 0 && trAlive === 0) {
+    recordRoundStats(room, null);
     awardTeamMoney(room, null);
     room.matchState = "resetting";
     room.resetAt = Date.now() + 3200;
@@ -516,6 +648,7 @@ function checkRoundEnd(room) {
 
   const winner = ctAlive > 0 ? "CT" : "TR";
   room.scores[winner]++;
+  recordRoundStats(room, winner);
   awardTeamMoney(room, winner);
   room.matchState = "resetting";
   room.resetAt = Date.now() + 3200;
@@ -576,6 +709,7 @@ function handleJoin(socket, data) {
   socket.roomCode = room.code;
   room.sockets.add(socket);
   room.players.set(id, player);
+  recordJoin(player.name);
   spawnPlayer(room, player);
 
   if (teamsReady(room) && room.matchState === "waiting") {
@@ -686,6 +820,7 @@ function handleFire(socket, data) {
         hitPlayer.respawnAt = Date.now() + 4500;
         player.kills++;
         player.money = Math.min(16000, player.money + 300);
+        recordElimination(player.name, hitPlayer.name);
       }
     }
 
@@ -841,33 +976,46 @@ function handleUpgrade(req, socket) {
 }
 
 const server = http.createServer((req, res) => {
+  if (req.method === "OPTIONS") {
+    send(res, 204, "");
+    return;
+  }
+
   if (!req.url || req.method !== "GET") {
     send(res, 405, "Metodo nao permitido");
     return;
   }
 
-  if (req.url.startsWith("/health")) {
-    let playerCount = 0;
-    for (const room of rooms.values()) playerCount += room.players.size;
-    send(res, 200, JSON.stringify({
-      ok: true,
-      game: "tatico-3d",
-      multiplayer: true,
-      rooms: rooms.size,
-      players: playerCount
-    }), "application/json; charset=utf-8");
+  const parsed = new URL(req.url, "http://localhost");
+
+  if (parsed.pathname === "/health" || parsed.pathname === "/api/health" || parsed.pathname === "/api/status") {
+    sendJson(res, 200, gameStatus());
     return;
   }
 
-  if (req.url.startsWith("/rooms")) {
+  if (parsed.pathname === "/api/config") {
+    sendJson(res, 200, { ok: true, ...gameConfig() });
+    return;
+  }
+
+  if (parsed.pathname === "/api/leaderboard") {
+    const limit = clamp(finiteNumber(parsed.searchParams.get("limit"), 20), 1, 100);
+    sendJson(res, 200, {
+      ok: true,
+      leaderboard: leaderboard(limit)
+    });
+    return;
+  }
+
+  if (parsed.pathname === "/rooms" || parsed.pathname === "/api/rooms") {
     const publicRooms = [...rooms.values()]
       .filter(room => room.public && room.players.size < ROOM_CAPACITY)
       .sort((a, b) => b.players.size - a.players.size || a.createdAt - b.createdAt)
       .map(roomListSummary);
-    send(res, 200, JSON.stringify({
+    sendJson(res, 200, {
       ok: true,
       rooms: publicRooms
-    }), "application/json; charset=utf-8");
+    });
     return;
   }
 

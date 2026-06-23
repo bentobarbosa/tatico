@@ -1,0 +1,49 @@
+{
+  "models": {
+    "weapon_pistol": "",
+    "weapon_smg": "",
+    "weapon_shotgun": "",
+    "weapon_rifle": "",
+    "weapon_sniper": "",
+    "bot_ct": "",
+    "bot_tr": "",
+    "crate": "",
+    "container_blue": "",
+    "container_red": "",
+    "barrel": "",
+    "vehicle_blue": "",
+    "vehicle_red": "",
+    "bomb": ""
+  },
+  "textures": {
+    "asphalt": {
+      "url": "",
+      "material": "asphalt",
+      "repeat": [16, 3]
+    },
+    "wall": {
+      "url": "",
+      "material": "wall",
+      "repeat": [5, 5]
+    },
+    "metal": {
+      "url": "",
+      "material": "metal",
+      "repeat": [3, 3]
+    },
+    "crate": {
+      "url": "",
+      "material": "crate",
+      "repeat": [2, 2]
+    }
+  },
+  "sounds": {
+    "shot": "",
+    "shot_pistol": "",
+    "shot_smg": "",
+    "shot_shotgun": "",
+    "shot_rifle": "",
+    "shot_sniper": "",
+    "hit": ""
+  }
+}
